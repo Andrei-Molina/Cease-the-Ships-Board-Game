@@ -1,6 +1,6 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class SceneLoader : MonoBehaviour
 {
@@ -8,14 +8,18 @@ public class SceneLoader : MonoBehaviour
 
     void Start()
     {
-        foreach (Button button in levelButtons)
-        {
-            button.onClick.AddListener(LoadBattlefieldScene);
-        }
+        // Assuming the first button is for Player vs AI
+        levelButtons[0].onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsEnvironment));
+        // Assuming the second button is for Player vs Player
+        levelButtons[1].onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsPlayer));
+        levelButtons[2].onClick.AddListener(() => LoadBattlefieldScene(GameMode.Tutorial));
     }
 
-    public void LoadBattlefieldScene()
+    public void LoadBattlefieldScene(GameMode mode)
     {
+        GameModeManager modeManager = FindObjectOfType<GameModeManager>();
+        modeManager.SetGameMode(mode); // Set the game mode
+
         SceneManager.LoadScene("Battlefield");
     }
 }

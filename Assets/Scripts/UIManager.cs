@@ -14,11 +14,24 @@ public class UIManager : MonoBehaviour
     public GameObject settingScreen;
     public GameObject aboutUsScreen;
 
+    [Header("Player vs Player Screen")]
+    public GameObject playerVsPlayerScreen;
+    public GameObject p1AvatarScreen;
+    public GameObject p1HandicapScreen;
+    public GameObject p2AvatarScreen;
+    public GameObject p2HandicapScreen;
+    public GameObject p1ColorScreen;
+    public GameObject p2ColorScreen;
+    public GameObject timerScreen;
+
     [Header("AI Difficulty Screens")]
     public GameObject aiDifficultyScreen;
     public GameObject easyDifficultyScreen;
     public GameObject mediumDifficultyScreen;
     public GameObject hardDifficultyScreen;
+
+    private HologramManager hologramManager;
+    private ColorController colorController;
 
     private void Awake() // Awake Instance
     {
@@ -31,11 +44,14 @@ public class UIManager : MonoBehaviour
             Debug.Log("Instance already exists, destroying object!");
             Destroy(this);
         }
+        hologramManager = FindObjectOfType<HologramManager>(); // Find the hologram manager
+        colorController = FindObjectOfType<ColorController>();
     }
 
     public void MainMenu() // Show Main Menu Screen
     {
         ClearUI();
+        hologramManager.ResetHologramStates(); // Reset hologram states
         mainMenuScreen.SetActive(true);
     }
 
@@ -68,6 +84,62 @@ public class UIManager : MonoBehaviour
         ClearUI();
         aboutUsScreen.SetActive(true);
     }
+    public void Player1AvatarScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        p1AvatarScreen.SetActive(true);
+    }
+    public void Player1HandicapScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        p1HandicapScreen.SetActive(true);
+    }
+    public void Player1ColorScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        p1ColorScreen.SetActive(true);
+    }
+    public void Player2AvatarScreen()
+    {
+        if (colorController.IsPlayer1ColorSelected())
+        {
+            ClearUI();
+            playerVsPlayerScreen.SetActive(true);
+            p2AvatarScreen.SetActive(true);
+        }
+        else
+        {
+            Debug.Log("No Color Selected for Player 1");
+        }
+    }
+    public void Player2HandicapScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        p2HandicapScreen.SetActive(true);
+    }
+    public void Player2ColorScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        p2ColorScreen.SetActive(true);
+    }
+    public void TimerScreen()
+    {
+        if (colorController.IsPlayer2ColorSelected())
+        {
+            ClearUI();
+            playerVsPlayerScreen.SetActive(true);
+            timerScreen.SetActive(true);
+        }
+        else
+        {
+            Debug.Log("No Color Selected for Player 2");
+        }
+    }
     public void AIDifficultyScreen()
     {
         ClearUI();
@@ -83,17 +155,26 @@ public class UIManager : MonoBehaviour
         ClearUI();
         mediumDifficultyScreen.SetActive(true);
     }
-
     public void HardDifficultyScreen()
     {
         ClearUI();
         hardDifficultyScreen.SetActive(true);
     }
-
     private void ClearUI() // Clear all UI
     {
         mainMenuScreen.SetActive(false);
         battleModeScreen.SetActive(false);
+        howToPlayScreen.SetActive(false);
+
+        //Clear UI for PVP
+        playerVsPlayerScreen.SetActive(false);
+        p1AvatarScreen.gameObject.SetActive(false);
+        p1HandicapScreen.SetActive(false);
+        p2AvatarScreen.gameObject.SetActive(false);
+        p2HandicapScreen.SetActive(false);
+        p1ColorScreen.SetActive(false);
+        p2ColorScreen.SetActive(false);
+        timerScreen.SetActive(false);
 
         //Clear UI for PVE
         aiDifficultyScreen.SetActive(false);

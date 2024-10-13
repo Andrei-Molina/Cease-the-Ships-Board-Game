@@ -86,4 +86,12 @@ MonoBehaviour:
   team: 0
   currentX: 0
   currentY: 0
+  pieceValue: 7
+  turnsInWaterspout: 0
   type: 0
+  shipCamera1: {fileID: 0}
+  shipCamera2: {fileID: 0}
+  desiredPosition: {x: 0, y: 0, z: 0}
+  desiredScale: {x: 1, y: 1, z: 1}
+  isMoving: 0
+  lerpSpeed: 1000

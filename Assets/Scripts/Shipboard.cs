@@ -5,31 +5,21 @@ using System.Text.RegularExpressions;
 using Unity.VisualScripting;
 using UnityEngine;
 using TMPro;
+using System.Linq;
+using UnityEngine.UI;
 
 public class Shipboard : MonoBehaviour
 {
+    //Tile Count
     private const int TILE_COUNT_X = 6;
     private const int TILE_COUNT_Y = 8;
+
+    //Player Skills
     private static int player1_SP = 0;
     private static int player2_SP = 0;
-    [SerializeField] private float tileSize;
-    List<ShipPieces> listShip = new List<ShipPieces>();
-    private ShipPieces[,] shipboardPieces;
-    private Vector3 bounds;
-    private GameObject[,] tiles;
+
+    //Camera Related
     private Camera currentCamera;
-    private Vector2Int currentHover;
-    private ShipPieces currentlyDragging;
-    [SerializeField] private Material tileMaterial;
-    [SerializeField] private float yOffset = 0.35f;
-    [SerializeField] private Vector3 boardCenter = Vector3.zero;
-    [Header("Prefabs")]
-    [SerializeField] private GameObject[] prefabs;
-    [SerializeField] private GameObject reefPrefab;
-    [SerializeField] private GameObject dicePrefab;
-    private List<ShipPieces> deadPlayer1 = new List<ShipPieces>();
-    private List<ShipPieces> deadPlayer2 = new List<ShipPieces>();
-    private List<Vector2Int> availableMoves = new List<Vector2Int>();
     private Vector3 player1CameraLandscapePosition = new Vector3(-0.140000001f, 4.11000013f, -3.74000001f);
     private Vector3 player2CameraLandscapePosition = new Vector3(-0.140000001f, 4.11000013f, 2.6f);
     private Quaternion player1CameraLandscapeRotation = Quaternion.Euler(63.117f, 0, 0);
@@ -39,37 +29,136 @@ public class Shipboard : MonoBehaviour
     private Quaternion player1CameraPortraitRotation = Quaternion.Euler(63.117f, 0, 0);
     private Quaternion player2CameraPortraitRotation = Quaternion.Euler(63.117f, 180, 0);
     private float cameraLerpSpeed = 2f; // Speed of lerp, you can adjust this value
-    //Call scripts
+    public Transform originalCameraPosition; // Initial camera position before transition
+
+    [Header("Avatars")]
+    [SerializeField] Image player1AvatarDisplay;
+    [SerializeField] Image player2AvatarDisplay;
+
+    [Header("Board")]
+    [SerializeField] private float tileSize;
+    [SerializeField] private float yOffset = 0.35f;
+    [SerializeField] private Vector3 boardCenter = Vector3.zero;
+    [SerializeField] private GameObject Gameboard;
+    [SerializeField] private Material tileMaterial;
+
+    [Header("Prefabs")]
+    [SerializeField] private GameObject[] prefabs;
+    [SerializeField] private GameObject dicePrefab;
+    [SerializeField] private GameObject reefPrefab;
+    [SerializeField] private GameObject whirlpoolCenterPrefab;
+    [SerializeField] private GameObject whirlpoolSurroundingPrefab;
+    [SerializeField] private GameObject[] treacherousCurrentPrefabs; // Array to hold prefabs for Left, Up, Right, Down
+    [SerializeField] private GameObject pirateHideoutPrefab;
+    [SerializeField] private GameObject waterspoutCenterPrefab;
+    [SerializeField] private GameObject waterspoutSurroundingPrefab;
+
+    [Header("Pirate Hideout")]
+    // Positions and rotations for each camera transition step
+    public Vector3 diceCameraPosition1 = new Vector3(-13.3f, 9.2f, 46.4f);
+    public Quaternion diceCameraRotation1 = Quaternion.Euler(4.17f, 159.39f, 357.35f);
+    public Vector3 diceCameraPosition2 = new Vector3(-9.6f, 9.2f, 27f);
+    public Quaternion diceCameraRotation2 = Quaternion.Euler(4.17f, 159.39f, 357.35f);
+    public Vector3 diceCameraPosition3 = new Vector3(-9.6f, 9.2f, 27f);
+    public Quaternion diceCameraRotation3 = Quaternion.Euler(347.5f, 160.27f, 356.91f);
+    public Vector3 resultViewPosition = new Vector3(-0.7f, 11.2f, 9.3f);
+    public Quaternion resultViewRotation = Quaternion.Euler(49.37f, 163.69f, 358.29f);
+    [SerializeField] private GameObject pirateHideoutTerrain;
+    [SerializeField] private TextMeshProUGUI tapScreenToRollDice;
+    private bool isRollingDice = false;
+
+    [Header("Script References")]
     public OrientationManager orientationManager;
     public MersenneTwister mt;
     public DiceRoll diceRoll;
+    public VictoryManager victoryManager;
+    public AIController aiController;
+    public ColorController colorController; 
+
     private bool isPlayer1Turn;
+
+    [Header("Calamities")]
+    public GameObject whirlpoolCenter;
+    public GameObject waterspoutCenter;
+
+    [Header("Check")]
+    public GameObject CheckText;
+
+    //LOGIC
+
+    List<ShipPieces> listShip = new List<ShipPieces>();
+    private ShipPieces[,] shipboardPieces;
+    private Vector3 bounds;
+    private GameObject[,] tiles;
+
+    private Vector2Int currentHover;
+    private ShipPieces currentlyDragging;
+    private List<ShipPieces> deadPlayer1 = new List<ShipPieces>();
+    private List<ShipPieces> deadPlayer2 = new List<ShipPieces>();
+    private List<Vector2Int> availableMoves = new List<Vector2Int>();
 
     //Tracking turn
     private bool turnEnded = false;
     private int turnCounter = 0;
 
-    private bool isRollingDice = false;
-    public Transform originalCameraPosition; // Initial camera position before transition
+    private List<Vector2Int[]> moveList = new List<Vector2Int[]>();
 
-    // Positions and rotations for each camera transition step
-    public Vector3 diceCameraPosition1 = new Vector3(-13.3f, 9.2f, 46.4f);
-    public Quaternion diceCameraRotation1 = Quaternion.Euler(4.17f, 159.39f, 357.35f);
+    //Calamities
+    //Whirlpool
+    private Vector2Int whirlpoolPosition = new Vector2Int(-1, -1); // Position of the whirlpool on the board
+    private List<Vector2Int> whirlpoolTiles = new List<Vector2Int>(); // List to track the tiles occupied by the whirlpool
+    // Define the valid ranges for x and y coordinates
+    private int[] whirlpoolValidXCoordinates = { 0, 1, 2, 3 }; // Whirlpool valid x-coordinates
+    private int[] whirlpoolValidYCoordinates = { 2, 3 };       // Whirlpool valid y-coordinates
+    private HashSet<Vector2Int> whirlpoolCenterPosition = new HashSet<Vector2Int>();
+    private const int WHIRLPOOL_GRID_SIZE = 3; // Size of the Waterspout grid
 
-    public Vector3 diceCameraPosition2 = new Vector3(-9.6f, 9.2f, 27f);
-    public Quaternion diceCameraRotation2 = Quaternion.Euler(4.17f, 159.39f, 357.35f);
+    //Reef
+    private HashSet<Vector2Int> reefPositions = new HashSet<Vector2Int>();
+    // Define the valid ranges for x and y coordinates
+    private int[] reefValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
+    private int reefMinY = 2; // Reef minimum y-coordinate
+    private int reefMaxY = 5; // Reef maximum y-coordinate
 
-    public Vector3 diceCameraPosition3 = new Vector3(-9.6f, 9.2f, 27f);
-    public Quaternion diceCameraRotation3 = Quaternion.Euler(347.5f, 160.27f, 356.91f);
+    //Treacherous Current
+    private HashSet<Vector2Int> treacherousCurrentPositions = new HashSet<Vector2Int>();
+    // Treacherous Current prefabs for different directions
+    private Quaternion[] treacherousCurrentRotations = {
+        Quaternion.Euler(0, 0, 0),      // TreacherousCurrent-Left
+        Quaternion.Euler(0, 90, 0),     // TreacherousCurrent-Up
+        Quaternion.Euler(0, 180, 0),    // TreacherousCurrent-Right
+        Quaternion.Euler(0, 270, 0)      // TreacherousCurrent-Down
+    };
+    // Define the valid ranges for x and y coordinates
+    private int[] treacherousCurrentValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
+    private int treacherousCurrentMinY = 2; // Reef minimum y-coordinate
+    private int treacherousCurrentMaxY = 5; // Reef maximum y-coordinate
 
-    public Vector3 resultViewPosition = new Vector3(-0.7f, 11.2f, 9.3f);
-    public Quaternion resultViewRotation = Quaternion.Euler(49.37f, 163.69f, 358.29f);
+    //Pirate Hideout
+    private HashSet<Vector2Int> pirateHideoutPositions = new HashSet<Vector2Int>();
+    // Define the valid ranges for x and y coordinates
+    private int[] pirateHideoutValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
+    private int pirateHideoutMinY = 2; // Reef minimum y-coordinate
+    private int pirateHideoutMaxY = 5; // Reef maximum y-coordinate
 
-    [SerializeField] private GameObject pirateHideoutTerrain;
-    [SerializeField] private GameObject Gameboard;
+    //Waterspout
+    private Vector2Int waterspoutPosition = new Vector2Int(-1, -1); // Position of the whirlpool on the board
+    private List<Vector2Int> waterspoutTiles = new List<Vector2Int>(); // List to track the tiles occupied by the whirlpool
+    private int[] waterspoutValidXCoordinates = { 0, 1, 2, 3 };
+    private int[] waterspoutValidYCoordinates = { 2, 3 };
+    private HashSet<Vector2Int> waterspoutCenterPosition = new HashSet<Vector2Int>();
+    private const int WATERSPOUT_GRID_SIZE = 3; // Size of the Waterspout grid
 
-    //Text
-    [SerializeField] private TextMeshProUGUI tapScreenToRollDice;
+    //To Check if a Ship is Currently Moving in Whirlpool and Waterspout
+    private bool isMovingInWhirlpool = false; // Add this line
+    private bool isMovingInWaterspout = false;
+
+    //To Check Active Calamities
+    private List<GameObject> activeWhirlpools = new List<GameObject>();
+    private List<GameObject> activeWaterspouts = new List<GameObject>();
+    private List<GameObject> activeReefs = new List<GameObject>();
+    private List<GameObject> activeTreacherousCurrents = new List<GameObject>();
+    private List<GameObject> activePirateHideouts = new List<GameObject>();
 
     private void Start()
     {
@@ -78,7 +167,25 @@ public class Shipboard : MonoBehaviour
         // Seed the Mersenne Twister with the current time in ticks, converted to a 32-bit unsigned integer.
         uint seed = (uint)(DateTime.Now.Ticks & 0xFFFFFFFF);
         mt = new MersenneTwister(seed);
+
+        GameModeManager modeManager = FindObjectOfType<GameModeManager>();
+        ColorController colorController = FindObjectOfType<ColorController>();
+
+        // Display Player 1's avatar if it exists
+        if (GameManager.instance.player1Avatar != null)
+            player1AvatarDisplay.sprite = GameManager.instance.player1Avatar;
+        // Display Player 2's avatar if it exists
+        if (GameManager.instance.player2Avatar != null)
+            player2AvatarDisplay.sprite = GameManager.instance.player2Avatar;
+
+        // Set the AI property based on the game mode
+        if (modeManager.currentGameMode == GameMode.PlayerVsEnvironment)
+            aiController.AI = true; // Set AI to true for Player vs Environment
+        else
+            aiController.AI = false; // Set AI to false for Player vs Player
+
         GenerateAllTiles(tileSize, TILE_COUNT_X, TILE_COUNT_Y);
+
         SpawnAllPieces();
         PositionAllPieces();
         SpawnRandomCalamity();
@@ -132,6 +239,13 @@ public class Shipboard : MonoBehaviour
             return;
         }
 
+        // If it's AI's turn, disable player interaction and trigger AI turn
+        if (aiController.IsAITurn())
+        {
+            aiController.StartAITurn();
+            return; // Exit Update while AI is taking its turn
+        }
+
         // Only handle camera transitions if not rolling dice
         if (!isRollingDice)
         {
@@ -166,6 +280,8 @@ public class Shipboard : MonoBehaviour
                     {
                         currentlyDragging = shipboardPieces[hitPosition.x, hitPosition.y];
                         availableMoves = currentlyDragging.GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+
+                        PreventCheck();
                         HighlightTiles();
                     }
                 }
@@ -184,6 +300,7 @@ public class Shipboard : MonoBehaviour
                 {
                     turnEnded = true; // Mark the turn as ended
                     turnCounter++;
+                    Debug.Log("Turn Counter: " + turnCounter);
                 }
 
                 // Check for Player 2's third turn
@@ -301,6 +418,61 @@ public class Shipboard : MonoBehaviour
         return new Vector3(x * tileSize, yOffset + 0.15f, y * tileSize) - bounds + new Vector3(tileSize / 2, 0, tileSize / 2);
     }
 
+    private void SetShipTypesForPlayer(Color playerColor, out ShipPieceType flagship, out ShipPieceType submarine, out ShipPieceType aircraftCarrier, out ShipPieceType lightCruiser, out ShipPieceType dockyard, out ShipPieceType destroyer, out ShipPieceType destroyerASW)
+    {
+        if (playerColor == Color.black)
+        {
+            flagship = ShipPieceType.BlackFlagship;
+            submarine = ShipPieceType.BlackSubmarine;
+            aircraftCarrier = ShipPieceType.BlackAircraftCarrier;
+            lightCruiser = ShipPieceType.BlackLightCruiser;
+            dockyard = ShipPieceType.BlackDockyard;
+            destroyer = ShipPieceType.BlackDestroyer;
+            destroyerASW = ShipPieceType.BlackDestroyerASW;
+        }
+        else if (playerColor == Color.gray)
+        {
+            flagship = ShipPieceType.SilverFlagship;
+            submarine = ShipPieceType.SilverSubmarine;
+            aircraftCarrier = ShipPieceType.SilverAircraftCarrier;
+            lightCruiser = ShipPieceType.SilverLightCruiser;
+            dockyard = ShipPieceType.SilverDockyard;
+            destroyer = ShipPieceType.SilverDestroyer;
+            destroyerASW = ShipPieceType.SilverDestroyerASW;
+        }
+        else if (playerColor == Color.red)
+        {
+            flagship = ShipPieceType.RedFlagship;
+            submarine = ShipPieceType.RedSubmarine;
+            aircraftCarrier = ShipPieceType.RedAircraftCarrier;
+            lightCruiser = ShipPieceType.RedLightCruiser;
+            dockyard = ShipPieceType.RedDockyard;
+            destroyer = ShipPieceType.RedDestroyer;
+            destroyerASW = ShipPieceType.RedDestroyerASW;
+        }
+        else if (playerColor == Color.blue)
+        {
+            flagship = ShipPieceType.BlueFlagship;
+            submarine = ShipPieceType.BlueSubmarine;
+            aircraftCarrier = ShipPieceType.BlueAircraftCarrier;
+            lightCruiser = ShipPieceType.BlueLightCruiser;
+            dockyard = ShipPieceType.BlueDockyard;
+            destroyer = ShipPieceType.BlueDestroyer;
+            destroyerASW = ShipPieceType.BlueDestroyerASW;
+        }
+        else
+        {
+            // Default to black if color isn't matched
+            flagship = ShipPieceType.BlackFlagship;
+            submarine = ShipPieceType.BlackSubmarine;
+            aircraftCarrier = ShipPieceType.BlackAircraftCarrier;
+            lightCruiser = ShipPieceType.BlackLightCruiser;
+            dockyard = ShipPieceType.BlackDockyard;
+            destroyer = ShipPieceType.BlackDestroyer;
+            destroyerASW = ShipPieceType.BlackDestroyerASW;
+        }
+    }
+
     private void SpawnAllPieces()
     {
         shipboardPieces = new ShipPieces[TILE_COUNT_X, TILE_COUNT_Y];
@@ -308,32 +480,61 @@ public class Shipboard : MonoBehaviour
         int player2 = 1;
 
         //Player 1
-        shipboardPieces[2, 0] = SpawnSinglePiece(ShipPieceType.BlackFlagship, player1);
-        shipboardPieces[3, 0] = SpawnSinglePiece(ShipPieceType.BlackDockyard, player1);
-        shipboardPieces[0, 1] = SpawnSinglePiece(ShipPieceType.BlackDestroyerASW, player1);
-        shipboardPieces[2, 1] = SpawnSinglePiece(ShipPieceType.BlackDestroyer, player1);
-        shipboardPieces[3, 1] = SpawnSinglePiece(ShipPieceType.BlackDestroyer, player1);
-        shipboardPieces[5, 1] = SpawnSinglePiece(ShipPieceType.BlackDestroyerASW, player1);
-        shipboardPieces[0, 0] = SpawnSinglePiece(ShipPieceType.BlackSubmarine, player1);
-        shipboardPieces[1, 0] = SpawnSinglePiece(ShipPieceType.BlackAircraftCarrier, player1);
-        shipboardPieces[4, 0] = SpawnSinglePiece(ShipPieceType.BlackAircraftCarrier, player1);
-        shipboardPieces[5, 0] = SpawnSinglePiece(ShipPieceType.BlackSubmarine, player1);
-        shipboardPieces[1, 1] = SpawnSinglePiece(ShipPieceType.BlackLightCruiser, player1);
-        shipboardPieces[4, 1] = SpawnSinglePiece(ShipPieceType.BlackLightCruiser, player1);
+        ShipPieceType player1Flagship, player1Submarine, player1AircraftCarrier, player1LightCruiser, player1Dockyard, player1Destroyer, player1DestroyerASW;
+        ShipPieceType player2Flagship, player2Submarine, player2AircraftCarrier, player2LightCruiser, player2Dockyard, player2Destroyer, player2DestroyerASW;
+
+        SetShipTypesForPlayer(GameManager.instance.player1Color, out player1Flagship, out player1Submarine, out player1AircraftCarrier, out player1LightCruiser, out player1Dockyard, out player1Destroyer, out player1DestroyerASW);
+        SetShipTypesForPlayer(GameManager.instance.player2Color, out player2Flagship, out player2Submarine, out player2AircraftCarrier, out player2LightCruiser, out player2Dockyard, out player2Destroyer, out player2DestroyerASW);
+
+        // Player 1
+        if (GameManager.instance.player1Handicap != HandicapType.SubmarineHandicap)
+        {
+            shipboardPieces[0, 0] = SpawnSinglePiece(player1Submarine, player1);
+            shipboardPieces[5, 0] = SpawnSinglePiece(player1Submarine, player1);
+        }
+
+        if (GameManager.instance.player1Handicap != HandicapType.AircraftCarrierHandicap)
+        {
+            shipboardPieces[1, 0] = SpawnSinglePiece(player1AircraftCarrier, player1);
+            shipboardPieces[4, 0] = SpawnSinglePiece(player1AircraftCarrier, player1);
+        }
+
+        if (GameManager.instance.player1Handicap != HandicapType.LightCruiserHandicap)
+        {
+            shipboardPieces[1, 1] = SpawnSinglePiece(player1LightCruiser, player1);
+            shipboardPieces[4, 1] = SpawnSinglePiece(player1LightCruiser, player1);
+        }
+
+        shipboardPieces[2, 0] = SpawnSinglePiece(player1Flagship, player1);
+        shipboardPieces[3, 0] = SpawnSinglePiece(player1Dockyard, player1);
+        shipboardPieces[0, 1] = SpawnSinglePiece(player1DestroyerASW, player1);
+        shipboardPieces[2, 1] = SpawnSinglePiece(player1Destroyer, player1);
+        shipboardPieces[3, 1] = SpawnSinglePiece(player1Destroyer, player1);
+        shipboardPieces[5, 1] = SpawnSinglePiece(player1DestroyerASW, player1);
 
         //Player 2
-        shipboardPieces[2, 7] = SpawnSinglePiece(ShipPieceType.SilverFlagship, player2);
-        shipboardPieces[3, 7] = SpawnSinglePiece(ShipPieceType.SilverDockyard, player2);
-        shipboardPieces[0, 6] = SpawnSinglePiece(ShipPieceType.SilverDestroyerASW, player2);
-        shipboardPieces[2, 6] = SpawnSinglePiece(ShipPieceType.SilverDestroyer, player2);
-        shipboardPieces[3, 6] = SpawnSinglePiece(ShipPieceType.SilverDestroyer, player2);
-        shipboardPieces[5, 6] = SpawnSinglePiece(ShipPieceType.SilverDestroyerASW, player2);
-        shipboardPieces[0, 7] = SpawnSinglePiece(ShipPieceType.SilverSubmarine, player2);
-        shipboardPieces[1, 7] = SpawnSinglePiece(ShipPieceType.SilverAircraftCarrier, player2);
-        shipboardPieces[4, 7] = SpawnSinglePiece(ShipPieceType.SilverAircraftCarrier, player2);
-        shipboardPieces[5, 7] = SpawnSinglePiece(ShipPieceType.SilverSubmarine, player2);
-        shipboardPieces[1, 6] = SpawnSinglePiece(ShipPieceType.SilverLightCruiser, player2);
-        shipboardPieces[4, 6] = SpawnSinglePiece(ShipPieceType.SilverLightCruiser, player2);
+        if (GameManager.instance.player2Handicap != HandicapType.SubmarineHandicap)
+        {
+            shipboardPieces[0, 7] = SpawnSinglePiece(player2Submarine, player2);
+            shipboardPieces[5, 7] = SpawnSinglePiece(player2Submarine, player2);
+        }
+        if (GameManager.instance.player2Handicap != HandicapType.AircraftCarrierHandicap)
+        {
+            shipboardPieces[1, 7] = SpawnSinglePiece(player2AircraftCarrier, player2);
+            shipboardPieces[4, 7] = SpawnSinglePiece(player2AircraftCarrier, player2);
+        }
+
+        if (GameManager.instance.player2Handicap != HandicapType.LightCruiserHandicap)
+        {
+            shipboardPieces[1, 6] = SpawnSinglePiece(player2LightCruiser, player2);
+            shipboardPieces[4, 6] = SpawnSinglePiece(player2LightCruiser, player2);
+        }
+        shipboardPieces[2, 7] = SpawnSinglePiece(player2Flagship, player2);
+        shipboardPieces[3, 7] = SpawnSinglePiece(player2Dockyard, player2);
+        shipboardPieces[0, 6] = SpawnSinglePiece(player2DestroyerASW, player2);
+        shipboardPieces[5, 6] = SpawnSinglePiece(player2DestroyerASW, player2);
+        shipboardPieces[2, 6] = SpawnSinglePiece(player2Destroyer, player2);
+        shipboardPieces[3, 6] = SpawnSinglePiece(player2Destroyer, player2);
     }
     private ShipPieces SpawnSinglePiece(ShipPieceType type, int team)
     {
@@ -348,20 +549,39 @@ public class Shipboard : MonoBehaviour
 
     public bool MoveTo(ShipPieces sp, int x, int y, bool changeTurn = true)
     {
-        bool isPirateHideout = pirateHideoutPositions.Contains(new Vector2Int(x, y));
+        Vector2Int targetPosition = new Vector2Int(x, y);
+        bool isPirateHideout = pirateHideoutPositions.Contains(targetPosition);
 
         // Check if the target position is occupied by a ReefSpawner
-        if (reefPositions.Contains(new Vector2Int(x, y)))
+        // Check if the target position is occupied by a ReefSpawner
+        if (reefPositions.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Reef present.");
             return false;
+        }
 
-        if (whirlpoolCenterPosition.Contains(new Vector2Int(x, y)))
+        if (whirlpoolCenterPosition.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Whirlpool present.");
             return false;
+        }
 
-        if (waterspoutCenterPosition.Contains(new Vector2Int(x, y)))
+        if (waterspoutCenterPosition.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Waterspout present.");
             return false;
+        }
 
-        if (!ContainsValidMove(ref availableMoves, new Vector2Int(x, y)))
+        // Check if the move is valid by calling ContainsValidMove
+        if (!ContainsValidMove(ref availableMoves, targetPosition))
+        {
+            // Create a string to hold the formatted list of available moves
+            string movesList = string.Join(", ", availableMoves.Select(move => $"({move.x}, {move.y})"));
+
+            Debug.Log("Current Available Moves: " + movesList);
+            Debug.Log($"Move to {targetPosition} failed: Invalid move according to ContainsValidMove.");
             return false;
+        }
 
         Vector2Int previousPosition = new Vector2Int(sp.currentX, sp.currentY);
 
@@ -377,12 +597,20 @@ public class Shipboard : MonoBehaviour
             //If it's the enemy team
             if (osp.team == 0)
             {
+                if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
+                osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                    victoryManager.Checkmate(1);
+
                 deadPlayer1.Add(osp);
                 osp.gameObject.SetActive(false);
             }
 
             else
             {
+                if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
+                    osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                    victoryManager.Checkmate(0);
+
                 deadPlayer2.Add(osp);
                 osp.gameObject.SetActive(false);
             }
@@ -393,6 +621,30 @@ public class Shipboard : MonoBehaviour
 
         PositionSinglePiece(x, y);
 
+        moveList.Add(new Vector2Int[] { previousPosition, new Vector2Int(x, y) });
+
+        // Check if there's a checkmate, and if not, proceed
+        if (CheckForCheckMate() != 1 && CheckForCheckMate() != 2)
+        {
+            // Check if the flagship is in check
+            if (IsFlagshipInCheck())
+            {
+                StartCoroutine(ShowCheckTextForSeconds(2f));
+            }
+        }
+
+        switch (CheckForCheckMate())
+        {
+            default:
+                break;
+            case 1:
+                victoryManager.Checkmate(sp.team);
+                break;
+            case 2:
+                victoryManager.Checkmate(2);
+                break;
+        }
+
         if (isPirateHideout && !isRollingDice)
         {
             StartCoroutine(MoveCameraAndRollDice());
@@ -402,10 +654,114 @@ public class Shipboard : MonoBehaviour
         {
             isPlayer1Turn = !isPlayer1Turn;
         }
-
         return true;
     }
+    //Overloaded Method
+    // Modified MoveTo method to accept availableMoves as a parameter
+    public bool MoveTo(ShipPieces sp, int x, int y, List<Vector2Int> availableMoves, bool changeTurn = true)
+    {
+        Vector2Int targetPosition = new Vector2Int(x, y);
+        bool isPirateHideout = pirateHideoutPositions.Contains(targetPosition);
 
+        if (reefPositions.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Reef present.");
+            return false;
+        }
+
+        if (whirlpoolCenterPosition.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Whirlpool present.");
+            return false;
+        }
+
+        if (waterspoutCenterPosition.Contains(targetPosition))
+        {
+            Debug.Log($"Move to {targetPosition} failed: Waterspout present.");
+            return false;
+        }
+
+        // Use the passed availableMoves list instead of an internal list
+        if (!availableMoves.Contains(targetPosition))
+        {
+            string movesList = string.Join(", ", availableMoves.Select(move => $"({move.x}, {move.y})"));
+            Debug.Log("Current Available Moves: " + movesList);
+            Debug.Log($"Move to {targetPosition} failed: Invalid move according to ContainsValidMove.");
+            return false;
+        }
+
+        Vector2Int previousPosition = new Vector2Int(sp.currentX, sp.currentY);
+
+        // Check if another piece is on the target position
+        if (shipboardPieces[x, y] != null)
+        {
+            ShipPieces osp = shipboardPieces[x, y];
+
+            if (sp.team == osp.team)
+                return false;
+
+            //If it's the enemy team
+            if (osp.team == 0)
+            {
+                if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
+                osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                    victoryManager.Checkmate(1);
+
+                deadPlayer1.Add(osp);
+                osp.gameObject.SetActive(false);
+            }
+
+            else
+            {
+                if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
+                    osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                    victoryManager.Checkmate(0);
+
+                deadPlayer2.Add(osp);
+                osp.gameObject.SetActive(false);
+            }
+        }
+
+        // Move the piece
+        shipboardPieces[x, y] = sp;
+        shipboardPieces[previousPosition.x, previousPosition.y] = null;
+        PositionSinglePiece(x, y);
+
+        moveList.Add(new Vector2Int[] { previousPosition, new Vector2Int(x, y) });
+
+        // Check if there's a checkmate, and if not, proceed
+        if (CheckForCheckMate() != 1 && CheckForCheckMate() != 2)
+        {
+            // Check if the flagship is in check
+            if (IsFlagshipInCheck())
+            {
+                StartCoroutine(ShowCheckTextForSeconds(2f));
+            }
+        }
+
+        switch (CheckForCheckMate())
+        {
+            default:
+                break;
+            case 1:
+                victoryManager.Checkmate(sp.team);
+                break;
+            case 2:
+                victoryManager.Checkmate(2);
+                break;
+        }
+
+        if (isPirateHideout && !isRollingDice)
+        {
+            StartCoroutine(MoveCameraAndRollDice());
+        }
+
+        if (changeTurn)
+        {
+            isPlayer1Turn = !isPlayer1Turn;
+        }
+        return true;
+    }
     private void HighlightTiles()
     {
         for (int i = 0; i < availableMoves.Count; i++)
@@ -438,11 +794,254 @@ public class Shipboard : MonoBehaviour
 
         return false;
     }
-    public ShipPieces[,] GetShipboardPieces()
-    {
-        return shipboardPieces;
-    }
 
+    //Prevent Check
+    public void PreventCheck()
+    {
+        ShipPieces targetFlagship = null;
+        for (int x = 0; x < TILE_COUNT_X; x++)
+            for (int y = 0; y < TILE_COUNT_Y; y++)
+                if (shipboardPieces[x, y] != null)
+                    if (shipboardPieces[x, y].type == ShipPieceType.RedFlagship || shipboardPieces[x, y].type == ShipPieceType.BlueFlagship || shipboardPieces[x, y].type == ShipPieceType.BlackFlagship || shipboardPieces[x, y].type == ShipPieceType.SilverFlagship)
+                        if (shipboardPieces[x, y].team == currentlyDragging.team)
+                            targetFlagship = shipboardPieces[x, y];
+
+        //Since we're sending ref availableMoves, we will be deleting moves that are putting us in check
+        SimulateMoveForSinglePiece(currentlyDragging, ref availableMoves, targetFlagship);
+    }
+    //Simulate Movement
+    public void SimulateMoveForSinglePiece(ShipPieces sp, ref List<Vector2Int> moves, ShipPieces targetFlagship)
+    {
+        //Save the current values, to reset after function call
+        int actualX = sp.currentX;
+        int actualY = sp.currentY;
+        List<Vector2Int> movesToRemove = new List<Vector2Int>();
+
+        //Go through all the moves, simulate them, and check if we're in check
+        for (int i = 0; i < moves.Count; i++)
+        {
+            int simX = moves[i].x;
+            int simY = moves[i].y;
+
+            Vector2Int flagshipPositionThisSim = new Vector2Int(targetFlagship.currentX, targetFlagship.currentY);
+            //Did we simulate the king's move
+            if (sp.type == ShipPieceType.BlueFlagship || sp.type == ShipPieceType.RedFlagship || sp.type == ShipPieceType.BlackFlagship || sp.type == ShipPieceType.SilverFlagship)
+                flagshipPositionThisSim = new Vector2Int(simX, simY);
+
+            //Copy the two-dimensional array and not a reference
+            ShipPieces[,] simulation = new ShipPieces[TILE_COUNT_X, TILE_COUNT_Y];
+            List<ShipPieces> simAttackingPieces = new List<ShipPieces>();
+            for (int x = 0; x < TILE_COUNT_X; x++)
+            {
+                for (int y = 0; y < TILE_COUNT_Y; y++)
+                {
+                    if (shipboardPieces[x, y] != null)
+                    {
+                        simulation[x, y] = shipboardPieces[x, y];
+                        if (simulation[x, y].team != sp.team)
+                            simAttackingPieces.Add(simulation[x, y]);
+                    }
+                }
+            }
+
+            //Simulate that move
+            simulation[actualX, actualY] = null;
+            sp.currentX = simX;
+            sp.currentY = simY;
+            simulation[simX, simY] = sp;
+
+            //Did one of the piece got taken down during our simulation
+            var deadPiece = simAttackingPieces.Find(s => s.currentX == simX && s.currentY == simY);
+            if (deadPiece != null)
+                simAttackingPieces.Remove(deadPiece);
+
+            //Get all the simulated attacking pieces moves
+            List<Vector2Int> simMoves = new List<Vector2Int>();
+            for (int a = 0; a < simAttackingPieces.Count; a++)
+            {
+                var pieceMoves = simAttackingPieces[a].GetAvailableMoves(ref simulation, TILE_COUNT_X, TILE_COUNT_Y);
+                for (int b = 0; b < pieceMoves.Count; b++)
+                    simMoves.Add(pieceMoves[b]);
+            }
+
+            //Is the flagship in trouble, if so remove the move
+            if (ContainsValidMove(ref simMoves, flagshipPositionThisSim))
+            {
+                movesToRemove.Add(moves[i]);
+            }
+
+            //Restore the actual SP data
+            sp.currentX = actualX;
+            sp.currentY = actualY;
+        }
+
+        //Remove from the current available move list
+        for (int i = 0; i < movesToRemove.Count; i++)
+            moves.Remove(movesToRemove[i]);
+    }
+    //Check for Checkmate
+    private int CheckForCheckMate()
+    {
+        var lastMove = moveList[moveList.Count - 1];
+
+        int targetTeam = (shipboardPieces[lastMove[1].x, lastMove[1].y].team == 0) ? 1 : 0;
+
+        List<ShipPieces> attackingPieces = new List<ShipPieces>();
+        List<ShipPieces> defendingPieces = new List<ShipPieces>();
+        ShipPieces targetFlagship = null;
+        for (int x = 0; x < TILE_COUNT_X; x++)
+            for (int y = 0; y < TILE_COUNT_Y; y++)
+                if (shipboardPieces[x, y] != null)
+                {
+                    if (shipboardPieces[x, y].team == targetTeam)
+                    {
+                        defendingPieces.Add(shipboardPieces[x, y]);
+                        if (shipboardPieces[x, y].type == ShipPieceType.BlueFlagship || shipboardPieces[x, y].type == ShipPieceType.RedFlagship || shipboardPieces[x, y].type == ShipPieceType.BlackFlagship || shipboardPieces[x, y].type == ShipPieceType.SilverFlagship)
+                        {
+                            targetFlagship = shipboardPieces[x, y];
+                        }
+                    }
+                    else
+                    {
+                        attackingPieces.Add(shipboardPieces[x, y]);
+                    }
+                }
+
+        string attackingPiecesLog = "Attacking Pieces: ";
+        foreach (var piece in attackingPieces)
+        {
+            attackingPiecesLog += piece.ToString() + ", ";
+        }
+
+        //UnityEngine.Debug.Log(attackingPiecesLog.TrimEnd(',', ' '));
+
+        string defendingPiecesLog = "Defending Pieces: ";
+        foreach (var piece in defendingPieces)
+        {
+            defendingPiecesLog += piece.ToString() + ", ";
+        }
+
+        //UnityEngine.Debug.Log(defendingPiecesLog.TrimEnd(',', ' '));
+
+        //Is the flagship attacked right now
+        List<Vector2Int> currentAvailableMoves = new List<Vector2Int>();
+        for (int i = 0; i < attackingPieces.Count; i++)
+        {
+            var pieceMoves = attackingPieces[i].GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+            for (int b = 0; b < pieceMoves.Count; b++)
+                currentAvailableMoves.Add(pieceMoves[b]);
+            //UnityEngine.Debug.Log("Current Available Moves Added successfully");
+        }
+
+        //Are we in check right now?
+        if (ContainsValidMove(ref currentAvailableMoves, new Vector2Int(targetFlagship.currentX, targetFlagship.currentY)))
+        {
+            //Flagship is under attack, can we move something to help him?
+            for (int i = 0; i < defendingPieces.Count; i++)
+            {
+                List<Vector2Int> defendingMoves = defendingPieces[i].GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+                //Since we're sending ref availableMoves, we will be deleting moves that are putting us in check
+                SimulateMoveForSinglePiece(defendingPieces[i], ref defendingMoves, targetFlagship);
+
+                if (defendingMoves.Count != 0)
+                {
+                    UnityEngine.Debug.Log("Defending Moves: " + defendingMoves.Count);
+                    return 0;
+                }
+            }
+
+            return 1; //Checkmate exit
+        }
+
+        else
+        {
+            for (int i = 0; i < defendingPieces.Count; i++)
+            {
+                List<Vector2Int> defendingMoves = defendingPieces[i].GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+                SimulateMoveForSinglePiece(defendingPieces[i], ref defendingMoves, targetFlagship);
+                if (defendingMoves.Count != 0)
+                {
+                    UnityEngine.Debug.Log("Defending Moves in ELSE: " + defendingMoves.Count);
+                    string defendingPiecesMovement = "Defending Pieces Movement: ";
+                    foreach (var piece in defendingMoves)
+                    {
+                        defendingPiecesMovement += piece.ToString() + ", ";
+                    }
+
+                    UnityEngine.Debug.Log(defendingPiecesMovement.TrimEnd(',', ' '));
+                    UnityEngine.Debug.Log("Name of defendingPiecesMovement: " + defendingPiecesMovement);
+
+                    return 0;
+                }
+            }
+
+            return 2; //Stalemate exit
+        }
+    }
+    private bool IsFlagshipInCheck()
+    {
+        var lastMove = moveList[moveList.Count - 1];
+        int targetTeam = (shipboardPieces[lastMove[1].x, lastMove[1].y].team == 0) ? 1 : 0;
+
+        ShipPieces targetFlagship = null;
+        for (int x = 0; x < TILE_COUNT_X; x++)
+        {
+            for (int y = 0; y < TILE_COUNT_Y; y++)
+            {
+                if (shipboardPieces[x, y] != null && shipboardPieces[x, y].team == targetTeam)
+                {
+                    if (shipboardPieces[x, y].type == ShipPieceType.BlueFlagship ||
+                        shipboardPieces[x, y].type == ShipPieceType.RedFlagship ||
+                        shipboardPieces[x, y].type == ShipPieceType.BlackFlagship ||
+                        shipboardPieces[x, y].type == ShipPieceType.SilverFlagship)
+                    {
+                        targetFlagship = shipboardPieces[x, y];
+                        break;
+                    }
+                }
+            }
+            if (targetFlagship != null)
+                break;
+        }
+
+        if (targetFlagship == null)
+            return false;
+
+        List<Vector2Int> currentAvailableMoves = new List<Vector2Int>();
+
+        for (int i = 0; i < shipboardPieces.GetLength(0); i++)
+        {
+            for (int j = 0; j < shipboardPieces.GetLength(1); j++)
+            {
+                if (shipboardPieces[i, j] != null && shipboardPieces[i, j].team != targetTeam)
+                {
+                    List<Vector2Int> pieceMoves = shipboardPieces[i, j].GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+                    currentAvailableMoves.AddRange(pieceMoves);
+                }
+            }
+        }
+
+        foreach (Vector2Int move in currentAvailableMoves)
+        {
+            if (move == new Vector2Int(targetFlagship.currentX, targetFlagship.currentY))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    private IEnumerator ShowCheckTextForSeconds(float seconds)
+    {
+        // Activate the CheckText GameObject
+        CheckText.SetActive(true);
+
+        // Wait for the specified duration
+        yield return new WaitForSeconds(seconds);
+
+        // Deactivate the CheckText GameObject after waiting
+        CheckText.SetActive(false);
+    }
     private void HandleCameraTransition()
     {
         if (isRollingDice) return; // Skip handling camera transition if a dice roll is in progress
@@ -646,73 +1245,6 @@ public class Shipboard : MonoBehaviour
     }
 
     //Testing Zone
-
-    //Calamities
-    //initialize all needed variables
-    //whirlpool
-    private Vector2Int whirlpoolPosition = new Vector2Int(-1, -1); // Position of the whirlpool on the board
-    private List<Vector2Int> whirlpoolTiles = new List<Vector2Int>(); // List to track the tiles occupied by the whirlpool
-    [SerializeField] private GameObject whirlpoolCenterPrefab;
-    [SerializeField] private GameObject whirlpoolSurroundingPrefab;
-    public GameObject whirlpoolCenter;
-    // Define the valid ranges for x and y coordinates
-    private int[] whirlpoolValidXCoordinates = { 0, 1, 2, 3 }; // Whirlpool valid x-coordinates
-    private int[] whirlpoolValidYCoordinates = { 2, 3 };       // Whirlpool valid y-coordinates
-    private HashSet<Vector2Int> whirlpoolCenterPosition = new HashSet<Vector2Int>();
-    private const int WHIRLPOOL_GRID_SIZE = 3; // Size of the Waterspout grid
-
-    //Reef
-    private HashSet<Vector2Int> reefPositions = new HashSet<Vector2Int>();
-    // Define the valid ranges for x and y coordinates
-    private int[] reefValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
-    private int reefMinY = 2; // Reef minimum y-coordinate
-    private int reefMaxY = 5; // Reef maximum y-coordinate
-
-    //Treacherous Current
-    private HashSet<Vector2Int> treacherousCurrentPositions = new HashSet<Vector2Int>();
-    // Treacherous Current prefabs for different directions
-    [SerializeField] private GameObject[] treacherousCurrentPrefabs; // Array to hold prefabs for Left, Up, Right, Down
-    private Quaternion[] treacherousCurrentRotations = {
-    Quaternion.Euler(0, 0, 0),      // TreacherousCurrent-Left
-    Quaternion.Euler(0, 90, 0),     // TreacherousCurrent-Up
-    Quaternion.Euler(0, 180, 0),    // TreacherousCurrent-Right
-    Quaternion.Euler(0, 270, 0)      // TreacherousCurrent-Down
-};
-    // Define the valid ranges for x and y coordinates
-    private int[] treacherousCurrentValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
-    private int treacherousCurrentMinY = 2; // Reef minimum y-coordinate
-    private int treacherousCurrentMaxY = 5; // Reef maximum y-coordinate
-
-    //Pirate Hideout
-    private HashSet<Vector2Int> pirateHideoutPositions = new HashSet<Vector2Int>();
-    [SerializeField] private GameObject pirateHideoutPrefab;
-    // Define the valid ranges for x and y coordinates
-    private int[] pirateHideoutValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
-    private int pirateHideoutMinY = 2; // Reef minimum y-coordinate
-    private int pirateHideoutMaxY = 5; // Reef maximum y-coordinate
-
-    //Waterspout
-    private Vector2Int waterspoutPosition = new Vector2Int(-1, -1); // Position of the whirlpool on the board
-    private List<Vector2Int> waterspoutTiles = new List<Vector2Int>(); // List to track the tiles occupied by the whirlpool
-    [SerializeField] private GameObject waterspoutCenterPrefab;
-    [SerializeField] private GameObject waterspoutSurroundingPrefab;
-    public GameObject waterspoutCenter;
-    private int[] waterspoutValidXCoordinates = { 0, 1, 2, 3 };
-    private int[] waterspoutValidYCoordinates = { 2, 3 };
-    private HashSet<Vector2Int> waterspoutCenterPosition = new HashSet<Vector2Int>();
-    private const int WATERSPOUT_GRID_SIZE = 3; // Size of the Waterspout grid
-
-    //Calamities
-    private bool isMovingInWhirlpool = false; // Add this line
-    private bool isMovingInWaterspout = false;
-
-    private List<GameObject> activeWhirlpools = new List<GameObject>();
-    private List<GameObject> activeWaterspouts = new List<GameObject>();
-    private List<GameObject> activeReefs = new List<GameObject>();
-    private List<GameObject> activeTreacherousCurrents = new List<GameObject>();
-    private List<GameObject> activePirateHideouts = new List<GameObject>();
-
-
     //Whirlpool
     private void SpawnWhirlpool(int startX, int startY)
     {
@@ -1422,8 +1954,120 @@ public class Shipboard : MonoBehaviour
             Debug.Log("Player 1 gains " + skillPoints + " skill points.");
         }
     }
+    // New method to handle calamities
+    public void HandleCalamities()
+    {
+        foreach (var tile in whirlpoolTiles)
+        {
+            if (shipboardPieces[tile.x, tile.y] != null)
+            {
+                isMovingInWhirlpool = true;
+                StartCoroutine(MoveShipsInWhirlpool());
+                break;
+            }
+        }
 
+        foreach (var tile in waterspoutTiles)
+        {
+            if (shipboardPieces[tile.x, tile.y] != null)
+            {
+                isMovingInWaterspout = true;
+                StartCoroutine(TeleportShipsInWaterspout());
+                break;
+            }
+        }
+
+        foreach (var tile in treacherousCurrentPositions)
+        {
+            ShipPieces ship = shipboardPieces[tile.x, tile.y];
+            if (ship != null)
+            {
+                MoveShipWithTreacherousCurrent(tile, ship);
+                break;
+            }
+        }
+    }
+
+    // Method to handle calamity spawn logic
+    public void HandleCalamitySpawn()
+    {
+        int spawnChance = mt.Next(100);
+        ClearCalamities();
+        if (spawnChance < 85)
+        {
+            SpawnRandomCalamity();
+        }
+    }
 
     //Getters and Setters
+    // Getter for the isPlayer1Turn field
+    public bool GetIsPlayer1Turn()
+    {
+        return isPlayer1Turn;
+    }
 
+    // Setter for the isPlayer1Turn field (if needed)
+    public void SetIsPlayer1Turn(bool turn)
+    {
+        isPlayer1Turn = turn;
+    }
+    //Setter for TurnEnded
+    public void SetIsTurnEnded(bool turn)
+    {
+        turnEnded = turn;
+    }
+    //Setter for CurrentlyDragging
+    public void SetCurrentlyDragging(ShipPieces piece)
+    {
+        currentlyDragging = piece;
+    }
+    //Setter for AvailableMoves
+    public void ClearAvailableMoves()
+    {
+        availableMoves.Clear();
+    }
+
+    // Getter for shipboardPieces
+    public ShipPieces[,] GetShipboardPieces()
+    {
+        return shipboardPieces;
+    }
+    // Getter for TILE_COUNT_X
+    public int GetTileCountX()
+    {
+        return TILE_COUNT_X;
+    }
+
+    // Getter for TILE_COUNT_Y
+    public int GetTileCountY()
+    {
+        return TILE_COUNT_Y;
+    }
+    //Getter for Dead Player 1 Pieces
+    public List<ShipPieces> GetDeadPlayer1()
+    {
+        return deadPlayer1;
+    }
+    //Getter for Dead Player 2 Pieces
+
+    public List<ShipPieces> GetDeadPlayer2()
+    {
+        return deadPlayer2;
+
+    }
+    //Getter for SpawnAllPieces method
+    public void RespawnAllPieces()
+    {
+        SpawnAllPieces();
+    }
+    //Getter for moveList
+    public List<Vector2Int[]> GetMoveList()
+    {
+        return moveList;
+    }
+    //Getter for availableMoves
+    public List<Vector2Int> GetAvailableMoves()
+    {
+        return availableMoves;
+    }
 }

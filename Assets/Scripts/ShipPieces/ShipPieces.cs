@@ -45,6 +45,7 @@ public class ShipPieces : MonoBehaviour
     [SerializeField] public int team;
     [SerializeField] public int currentX;
     [SerializeField] public int currentY;
+    [SerializeField] public int pieceValue;
     public int turnsInWaterspout;
     [SerializeField] public ShipPieceType type;
     [SerializeField] public Camera shipCamera1;

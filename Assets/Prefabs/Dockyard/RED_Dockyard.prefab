@@ -134,6 +134,8 @@ MonoBehaviour:
   team: 0
   currentX: 0
   currentY: 0
+  pieceValue: 15
+  turnsInWaterspout: 0
   type: 0
   shipCamera1: {fileID: 2317311776815025271}
   shipCamera2: {fileID: 3814474677568597861}
