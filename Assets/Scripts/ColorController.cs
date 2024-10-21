@@ -176,6 +176,13 @@ public class ColorController : MonoBehaviour
     }
     private void UpdatePlayer2ButtonInteractivity(Color selectedColor, bool isDisabled)
     {
+        //Re-enable all buttons
+        for (int i = 0; i < player2ColorButtons.Length; i++)
+        {
+            player2ColorButtons[i].interactable = true;
+        }
+
+        //Disable button corresponding to selected color of Player 1
         for (int i = 0; i < availableColors.Length; i++)
         {
             if (availableColors[i] == selectedColor)

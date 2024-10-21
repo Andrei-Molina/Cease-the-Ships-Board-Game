@@ -1,0 +1,43 @@
+fileFormatVersion: 2
+guid: d161f27c0a6b2cb4fb4fbe3ee8d588ee
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 'Plane/Plane:000:'
+    second: {fileID: -3846018093981099296, guid: 25fb91a4f08141f46b4e469a6b680aaf, type: 3}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: f53f5fc499d31e44b9deee84d28a9ee8, type: 3}
+  rootGameObjectId: Treacherous Current
+  rootGameObjectName: Treacherous Current
+  importerVersion: 1
+  streamSettings:
+    normals: 1
+    tangents: 1
+    cameraAspectRatio: 2
+    importVisibility: 1
+    scaleFactor: 100
+    swapHandedness: 1
+    flipFaces: 0
+    interpolateSamples: 1
+    importPointPolygon: 1
+    importLinePolygon: 1
+    importTrianglePolygon: 1
+    importXform: 1
+    importCameras: 1
+    importMeshes: 1
+    importPoints: 0
+    importCurves: 1
+    createCurveRenderers: 0
+  abcStartTime: 7.5
+  abcEndTime: 33.33333333333333
+  startTime: 7.5
+  endTime: 33.33333333333333
+  importWarning: 
+  firstImport: 0
+  isHDF5: 0

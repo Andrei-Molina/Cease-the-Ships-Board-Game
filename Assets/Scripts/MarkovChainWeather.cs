@@ -10,7 +10,6 @@ public class MarkovChainWeather : MonoBehaviour
         "Rainy",
         "Windy",
         "Stormy",
-        "Winter",
         "Snowy",
         "Foggy",
         "Hail"
@@ -21,7 +20,6 @@ public class MarkovChainWeather : MonoBehaviour
     { "Sunny", new Dictionary<string, float> { { "Cloudy", 0.6f }, { "Windy", 0.4f } } },
     { "Cloudy", new Dictionary<string, float> { { "Sunny", 0.3f }, { "Rainy", 0.4f }, { "Foggy", 0.3f } } },
     { "Rainy", new Dictionary<string, float> { { "Windy", 0.5f }, { "Stormy", 0.5f } } },
-    { "Winter", new Dictionary<string, float> { { "Snowy", 0.7f }, { "Stormy", 0.3f } } },
     { "Snowy", new Dictionary<string, float> { { "Cloudy", 0.6f }, { "Sunny", 0.4f } } },
     { "Foggy", new Dictionary<string, float> { { "Sunny", 0.5f }, { "Windy", 0.5f } } },
     { "Hail", new Dictionary<string, float> { { "Stormy", 0.7f }, { "Windy", 0.3f } } },

@@ -6,7 +6,6 @@ public class WeatherSimulation : MonoBehaviour
     private string[] weatherConditions = {
         "Stormy",
         "Rainy",
-        "Winter",
         "Cloudy",
         "Foggy",
         "Snowy",

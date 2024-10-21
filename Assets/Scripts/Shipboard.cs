@@ -7,9 +7,37 @@ using UnityEngine;
 using TMPro;
 using System.Linq;
 using UnityEngine.UI;
+using UnityEngine.Playables;
+
+public enum GamePhase
+{
+    StandbyPhase,
+    MainPhase1,
+    ActionPhase,
+    MainPhase2,
+    EndPhase
+}
 
 public class Shipboard : MonoBehaviour
 {
+    public Button changeTurnButton;
+
+    // Assuming this is part of your game manager class
+    public string logText = ""; // This will store all the logs
+    public TextMeshProUGUI listOfLogs;
+
+    [Header("Phases")]
+    [SerializeField] private TextMeshProUGUI phaseText;
+    [SerializeField] private Sprite[] phaseBackgrounds;
+    [SerializeField] private Image currentPhaseImage;
+    [SerializeField] private GameObject phaseCanvas;
+    [SerializeField] private GameObject phaseSelectionContainer;
+    [SerializeField] private Sprite[] phaseSelectionBackgrounds;
+    [SerializeField] private GameObject phaseContainer;
+    [SerializeField] private GameObject phaseSelectionText;
+    [SerializeField] private Sprite[] phaseSelectionSprites;
+    [SerializeField] private GameObject[] gameobjectPhases;
+
     //Tile Count
     private const int TILE_COUNT_X = 6;
     private const int TILE_COUNT_Y = 8;
@@ -34,6 +62,10 @@ public class Shipboard : MonoBehaviour
     [Header("Avatars")]
     [SerializeField] Image player1AvatarDisplay;
     [SerializeField] Image player2AvatarDisplay;
+    public RectTransform player1AvatarRect;
+    public RectTransform player2AvatarRect;
+    public Vector2 player1AvatarPosition;
+    public Vector2 player2AvatarPosition;
 
     [Header("Board")]
     [SerializeField] private float tileSize;
@@ -73,7 +105,9 @@ public class Shipboard : MonoBehaviour
     public DiceRoll diceRoll;
     public VictoryManager victoryManager;
     public AIController aiController;
-    public ColorController colorController; 
+    public ColorController colorController;
+    public ToggleCalamities toggleCalamities;
+    public AvatarButtonsManager avatarButtonsManager;
 
     private bool isPlayer1Turn;
 
@@ -83,6 +117,14 @@ public class Shipboard : MonoBehaviour
 
     [Header("Check")]
     public GameObject CheckText;
+
+    [Header("Timer")]
+    public TextMeshProUGUI player1TimerText;
+    public TextMeshProUGUI player2TimerText;
+
+    [Header("Canvas")]
+    public GameObject AvatarCanvas;
+    public GameObject TimerCanvas;
 
     //LOGIC
 
@@ -160,8 +202,25 @@ public class Shipboard : MonoBehaviour
     private List<GameObject> activeTreacherousCurrents = new List<GameObject>();
     private List<GameObject> activePirateHideouts = new List<GameObject>();
 
+    //Alembic Timeline
+    public PlayableDirector alembicPlayableDirector; // Reference to the PlayableDirector
+    public GameObject tornado2BlendTrackObject; // This will reference the Alembic track (tornado2_blend) from the timeline
+
+    public GamePhase currentPhase = GamePhase.StandbyPhase;
+
+    private Coroutine phaseTransitionCoroutine;
+    private Image phaseSelectionImage;
+
     private void Start()
     {
+        avatarButtonsManager = FindObjectOfType<AvatarButtonsManager>();
+     
+        phaseCanvas.gameObject.SetActive(true);
+        phaseText.gameObject.SetActive(true);
+        currentPhaseImage.gameObject.SetActive(true);
+
+        phaseSelectionImage = phaseSelectionText.GetComponent<Image>();
+
         //Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
         isPlayer1Turn = true;
         // Seed the Mersenne Twister with the current time in ticks, converted to a 32-bit unsigned integer.
@@ -189,8 +248,82 @@ public class Shipboard : MonoBehaviour
         SpawnAllPieces();
         PositionAllPieces();
         SpawnRandomCalamity();
+
+        float timerValue = GameManager.instance.selectedTimer ?? 0; // Default to 0 if null
+
+        // If a timer is selected, start the countdown
+        if (timerValue > 0)
+        {
+            float timerDuration = timerValue * 60; // Convert minutes to seconds
+            StartCoroutine(StartTimerCountdown(timerDuration));
+        }
+        else
+        {
+            player1TimerText.gameObject.SetActive(false);
+            player2TimerText.gameObject.SetActive(false);
+        }
+
+        // Add OnClick listeners to gameObjectPhases[] buttons
+        for (int i = 0; i < gameobjectPhases.Length; i++)
+        {
+            int index = i; // Local copy of index for closure
+            gameobjectPhases[i].GetComponent<Button>().onClick.AddListener(() => OnPhaseButtonClick(index));
+        }
+
+        //Display, showm and perform animation for Standby Phase at the beginning of the game
+        StartPhaseTransition();
+    }
+    private void StartPhaseTransition()
+    {
+        // If a coroutine is already running, stop it before starting a new one
+        if (phaseTransitionCoroutine != null)
+        {
+            StopCoroutine(phaseTransitionCoroutine);
+        }
+        phaseTransitionCoroutine = StartCoroutine(HandlePhaseTransitions());
+    }
+
+    private IEnumerator HandlePhaseTransitions()
+    {
+        // Display and animate Standby Phase
+        currentPhase = GamePhase.StandbyPhase;
+        yield return StartCoroutine(AnimatePhaseIndicators());
+        UpdatePhaseUI();
+
+        // Display and animate Main Phase 1
+        currentPhase = GamePhase.MainPhase1;
+        UpdatePhaseUI();
+        yield return StartCoroutine(AnimatePhaseIndicators());
+
+        // Reset the coroutine reference
+        phaseTransitionCoroutine = null;
     }
     //Generate board
+    private IEnumerator StartTimerCountdown(float duration)
+    {
+        float remainingTime = duration;
+
+        while (remainingTime > 0)
+        {
+            // Calculate minutes and seconds
+            int minutes = Mathf.FloorToInt(remainingTime / 60);
+            int seconds = Mathf.FloorToInt(remainingTime % 60);
+
+            // Update both Player 1 and Player 2 timer texts
+            string formattedTime = string.Format("{0:00}:{1:00}", minutes, seconds);
+            player1TimerText.text = formattedTime;
+            player2TimerText.text = formattedTime;
+
+            yield return new WaitForSeconds(1);
+            remainingTime--;
+        }
+
+        // When the timer ends, set both timers to zero
+        player1TimerText.text = "00:00";
+        player2TimerText.text = "00:00";
+        Debug.Log("Time's up!");
+    }
+
     private void GenerateAllTiles(float tileSize, int tileCountX, int tileCountY)
     {
         yOffset += transform.position.y;
@@ -231,29 +364,42 @@ public class Shipboard : MonoBehaviour
 
         return tileObject;
     }
-    private void Update()
+    private void HandleMainPhase()
     {
-        if (!currentCamera)
-        {
-            currentCamera = Camera.main;
-            return;
-        }
-
-        // If it's AI's turn, disable player interaction and trigger AI turn
-        if (aiController.IsAITurn())
-        {
-            aiController.StartAITurn();
-            return; // Exit Update while AI is taking its turn
-        }
-
-        // Only handle camera transitions if not rolling dice
-        if (!isRollingDice)
-        {
-            HandleCameraTransition();
-        }
-
+        // Only allow selecting ships and showing their names; no dragging or movement.
         RaycastHit info;
         Ray ray = currentCamera.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out info, 100, LayerMask.GetMask("Tile", "Hover", "Highlight")))
+        {
+            Vector2Int hitPosition = LookupTileIndex(info.transform.gameObject);
+
+            if (Input.GetMouseButtonDown(0)) // Select ship
+            {
+                var ship = shipboardPieces[hitPosition.x, hitPosition.y];
+                if (ship != null)
+                {
+                    Debug.Log($"Ship selected: {ship.name}");
+                    // In this phase, we do not allow dragging
+                    // Add skill usage here when implemented
+                }
+            }
+        }
+    }
+
+    private bool movedShip = false;
+
+    private void HandleActionPhase()
+    {
+        RaycastHit info;
+        Ray ray = currentCamera.ScreenPointToRay(Input.mousePosition);
+
+        // Check if the ship has been moved
+        if (movedShip) return;
+
+        if (avatarButtonsManager.IsAtLeastOneButtonActive()) return;
+
+        if (phaseCanvas.activeSelf) return;
+
         if (Physics.Raycast(ray, out info, 100, LayerMask.GetMask("Tile", "Hover", "Highlight")) && !isMovingInWhirlpool && !isMovingInWaterspout)
         {
             Vector2Int hitPosition = LookupTileIndex(info.transform.gameObject);
@@ -296,28 +442,6 @@ public class Shipboard : MonoBehaviour
                 if (!validMove)
                     currentlyDragging.SetPosition(GetTileCenter(previousPosition.x, previousPosition.y));
 
-                if (validMove)
-                {
-                    turnEnded = true; // Mark the turn as ended
-                    turnCounter++;
-                    Debug.Log("Turn Counter: " + turnCounter);
-                }
-
-                // Check for Player 2's third turn
-                if (turnCounter == 6 && (isPlayer1Turn && turnCounter % 6 == 0)) // 6 because each player has 3 turns
-                {
-                    turnCounter = 0;
-
-                    // Use Mersenne Twister to determine if a calamity should be spawned.
-                    int spawnChance = mt.Next(100); // Generate a random integer between 0 and 99.
-                    ClearCalamities(); // Clear existing whirlpool and reef calamities.
-
-                    if (spawnChance < 85) // 85% chance to spawn a calamity.
-                    {
-                        SpawnRandomCalamity(); // Call the method to spawn a new calamity.
-                    }
-                }
-
                 currentlyDragging = null;
                 RemoveHighlightTiles();
             }
@@ -338,6 +462,17 @@ public class Shipboard : MonoBehaviour
             }
         }
 
+        if (currentlyDragging)
+        {
+            Plane horizontalPlane = new Plane(Vector3.up, Vector3.up * yOffset);
+            float distance = 0.0f;
+            if (horizontalPlane.Raycast(ray, out distance))
+                currentlyDragging.SetPosition(ray.GetPoint(distance) + Vector3.up * 1.0f);
+        }
+    }
+
+    private void HandleEndPhase()
+    {
         // Handle Whirlpool movement at the end of the turn
         if (turnEnded)
         {
@@ -377,12 +512,385 @@ public class Shipboard : MonoBehaviour
             turnEnded = false; // Reset turn ended state for the next turn
         }
 
-        if (currentlyDragging)
+        isPlayer1Turn = !isPlayer1Turn;
+        movedShip = false;
+
+        if (isPlayer1Turn)
         {
-            Plane horizontalPlane = new Plane(Vector3.up, Vector3.up * yOffset);
-            float distance = 0.0f;
-            if (horizontalPlane.Raycast(ray, out distance))
-                currentlyDragging.SetPosition(ray.GetPoint(distance) + Vector3.up * 1.0f);
+            bool buttonsVisible = avatarButtonsManager.GetPlayer2ButtonsVisible();
+            avatarButtonsManager.TogglePlayer2Public(ref buttonsVisible);
+        }
+        else if (!isPlayer1Turn)
+        {
+            bool buttonsVisible = avatarButtonsManager.GetPlayer1ButtonsVisible();
+            avatarButtonsManager.TogglePlayer1Public(ref buttonsVisible);
+        }
+
+        currentPhase = GamePhase.StandbyPhase;
+
+        UpdatePhaseUI(); // Update UI after phase change
+        StartCoroutine(AnimatePhaseIndicators());
+    }
+
+    public void ChangePhase()
+    {
+        phaseContainer.gameObject.SetActive(false);
+        avatarButtonsManager.playerButtons[2].GetComponent<Button>().interactable = true;
+        Image imageComponent = avatarButtonsManager.playerButtons[2].GetComponent<Image>();
+        Color color = imageComponent.color; // Get the current color
+        color.a = 128/255.0f; // Set the alpha value
+        imageComponent.color = color; // Assign the modified color back
+        switch (currentPhase)
+        {
+            case GamePhase.StandbyPhase:
+                currentPhase = GamePhase.MainPhase1;
+                Debug.Log($"Current Phase: {currentPhase}");
+                break;
+            case GamePhase.MainPhase1:
+                currentPhase = GamePhase.ActionPhase;
+                Debug.Log($"Current Phase: {currentPhase}");
+                break;
+            case GamePhase.ActionPhase:
+                if (movedShip)
+                    currentPhase = GamePhase.MainPhase2;
+                Debug.Log($"Current Phase: {currentPhase}");
+                break;
+            case GamePhase.MainPhase2:
+                Debug.Log($"Current Phase: {currentPhase}");
+                break;
+            case GamePhase.EndPhase:
+                turnEnded = true; // Mark the turn as ended
+                turnCounter++;
+                break;
+        }
+
+        UpdatePhaseUI(); // Update UI after phase change
+        StartCoroutine(AnimatePhaseIndicators());
+    }
+
+    // Method to handle button clicks and phase transitions
+    private void OnPhaseButtonClick(int index)
+    {
+        switch (index)
+        {
+            case 0:
+                currentPhase = GamePhase.StandbyPhase;
+                break;
+            case 1:
+                currentPhase = GamePhase.MainPhase1;
+                break;
+            case 2:
+                currentPhase = GamePhase.ActionPhase;
+                break;
+            case 3:
+                currentPhase = GamePhase.MainPhase2;
+                break;
+            case 4:
+                currentPhase = GamePhase.EndPhase;
+                break;
+        }
+
+        ChangePhase(); // Change the phase
+    }
+
+    private void UpdatePhaseUI()
+    {
+        phaseCanvas.gameObject.SetActive(true);
+        phaseText.gameObject.SetActive(true);
+        currentPhaseImage.gameObject.SetActive(true);
+
+
+
+        // Update the phase image based on the active player's color
+        Color playerColor = isPlayer1Turn ? GameManager.instance.player1Color : GameManager.instance.player2Color;
+        currentPhaseImage.sprite = GetPhaseBackgroundSprite(playerColor);
+        phaseSelectionImage.sprite = GetPhaseSelectionTextBackgroundSprite(playerColor); 
+
+        // Set the phase text
+        phaseText.text = GetPhaseText(currentPhase);
+
+        // Log the phase change
+        LogPhaseChange(phaseText.text);
+    }
+
+    private Sprite GetPhaseBackgroundSprite(Color color)
+    {
+        if (color == Color.red)
+            return phaseBackgrounds[0];
+        if (color == Color.blue)
+            return phaseBackgrounds[1];
+        if (color == Color.black)
+            return phaseBackgrounds[2];
+        if (color == Color.gray) // Assuming gray for silver
+            return phaseBackgrounds[3];
+
+        return null; // Handle default case if necessary
+    }
+
+    private Sprite GetPhaseSelectionTextBackgroundSprite(Color color)
+    {
+        if (color == Color.red)
+            return phaseSelectionBackgrounds[0];
+        if (color == Color.blue)
+            return phaseSelectionBackgrounds[1];
+        if (color == Color.black)
+            return phaseSelectionBackgrounds[2];
+        if (color == Color.gray) // Assuming gray for silver
+            return phaseSelectionBackgrounds[3];
+
+        return null; // Handle default case if necessary
+    }
+
+    private string GetPhaseText(GamePhase phase)
+    {
+        return phase switch
+        {
+            GamePhase.StandbyPhase => "Standby Phase",
+            GamePhase.MainPhase1 => "Main Phase 1",
+            GamePhase.ActionPhase => "Action Phase",
+            GamePhase.MainPhase2 => "Main Phase 2",
+            GamePhase.EndPhase => "End Phase",
+            _ => ""
+        };
+    }
+
+
+    public float lerpDuration = 0.2f; // Duration for lerping
+    public float waitDuration = 3f; // Duration to stay at (0,0)
+    private Vector2 startPosition = new Vector2(1765, 0);
+    private Vector2 endPosition = Vector2.zero;
+
+    private IEnumerator AnimatePhaseIndicators()
+    {
+        // Get RectTransforms
+        RectTransform imageRectTransform = currentPhaseImage.GetComponent<RectTransform>();
+        RectTransform textRectTransform = phaseText.GetComponent<RectTransform>();
+
+        // Move to (0, 0)
+        float elapsedTime = 0f;
+
+        // Lerp both the image and text positions
+        while (elapsedTime < lerpDuration)
+        {
+            Vector2 newPosition = Vector2.Lerp(startPosition, endPosition, elapsedTime / lerpDuration);
+            imageRectTransform.anchoredPosition = newPosition;
+            textRectTransform.anchoredPosition = newPosition;
+
+            elapsedTime += Time.deltaTime;
+            yield return null; // Wait until the next frame
+        }
+
+        // Ensure both end exactly at (0,0)
+        imageRectTransform.anchoredPosition = endPosition;
+        textRectTransform.anchoredPosition = endPosition;
+
+        // Wait for 3 seconds
+        yield return new WaitForSeconds(waitDuration);
+
+        // Optionally make them disappear
+        currentPhaseImage.gameObject.SetActive(false);
+        phaseText.gameObject.SetActive(false);
+
+        // Reset back to (1765, 0)
+        imageRectTransform.anchoredPosition = startPosition;
+        textRectTransform.anchoredPosition = startPosition;
+        phaseCanvas.gameObject.SetActive(false);
+        currentPhaseImage.gameObject.SetActive(false);
+        phaseText.gameObject.SetActive(false);
+    }
+
+    private void LogPhaseChange(string phaseText)
+    {
+        // Append the phase change to the log
+        logText += $"\nPhase Changed to: {phaseText} \n";
+        listOfLogs.text = logText; // Update the on-screen log text
+    }
+
+    // Show the phase selection UI and make buttons interactable based on the phase
+    public void ShowPhaseSelectionUI()
+    {
+        // Activate the relevant UI elements
+        phaseCanvas.gameObject.SetActive(true);
+        phaseSelectionContainer.SetActive(true);
+        phaseContainer.SetActive(true);
+        phaseSelectionText.gameObject.SetActive(true);
+
+        // Update the phase UI based on the player's color and turn
+        UpdatePhaseSelectionUI();
+
+        // Ensure buttons are reset based on the current player
+        ResetButtonStates();
+    }
+
+    // Reset all button elements to interactable = true when player switches
+    private void ResetButtonStates()
+    {
+        for (int i = 0; i < gameobjectPhases.Length; i++)
+        {
+            Button button = gameobjectPhases[i].GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = true;
+            }
+        }
+
+        // Set the button interactability based on the current game phase
+        SetButtonInteractability();
+    }
+
+    // Control button interactability based on the current game phase
+    private void SetButtonInteractability()
+    {
+        switch (currentPhase)
+        {
+            case GamePhase.StandbyPhase:
+                SetInteractability(new[] { false, true, true, false, false });
+                break;
+            case GamePhase.MainPhase1:
+                SetInteractability(new[] { false, false, true, false, false });
+                break;
+            case GamePhase.ActionPhase:
+                SetInteractability(new[] { false, false, false, false, false });
+                break;
+            case GamePhase.MainPhase2:
+                SetInteractability(new[] { false, false, false, false, true });
+                break;
+            case GamePhase.EndPhase:
+                SetInteractability(new[] { false, false, false, false, false });
+                break;
+        }
+
+        if (currentPhase == GamePhase.ActionPhase)
+        {
+            if (movedShip)
+                SetInteractability(new[] { false, false, false, true, true });
+        }
+    }
+
+
+    // Utility method to set interactability of the buttons
+    private void SetInteractability(bool[] interactableStates)
+    {
+        for (int i = 0; i < gameobjectPhases.Length; i++)
+        {
+            Button button = gameobjectPhases[i].GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = interactableStates[i];
+            }
+        }
+    }
+
+    private void UpdatePhaseSelectionUI()
+    {
+        // Determine whose turn it is and retrieve the respective player's color
+        Color playerColor = Color.clear;
+        if (!aiController.AI)
+            playerColor = isPlayer1Turn ? GameManager.instance.player1Color : GameManager.instance.player2Color;
+        else if (aiController.AI)
+            playerColor = GameManager.instance.player1Color;
+
+        // Update gameobjectPhases and phaseSelectionBackgrounds based on the player's color
+        if (playerColor == Color.red)
+        {
+            SetPhaseSprites(0, 0);
+        }
+        else if (playerColor == Color.blue)
+        {
+            SetPhaseSprites(5, 1);
+        }
+        else if (playerColor == Color.black)
+        {
+            SetPhaseSprites(10, 2);
+        }
+        else if (playerColor == Color.gray) // Assuming gray for silver
+        {
+            SetPhaseSprites(15, 3);
+        }
+    }
+
+    private void SetPhaseSprites(int spriteStartIndex, int backgroundIndex)
+    {
+        // Assign the sprites to the gameobjectPhases
+        for (int i = 0; i < gameobjectPhases.Length; i++)
+        {
+            Image phaseImage = gameobjectPhases[i].GetComponent<Image>();
+            if (phaseImage != null && phaseSelectionSprites.Length > spriteStartIndex + i)
+            {
+                phaseImage.sprite = phaseSelectionSprites[spriteStartIndex + i];
+            }
+        }
+
+        // Update the background image
+        if (phaseSelectionBackgrounds.Length > backgroundIndex)
+        {
+            currentPhaseImage.sprite = phaseSelectionBackgrounds[backgroundIndex];
+        }
+    }
+    private IEnumerator Delay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+    }
+
+    private void Update()
+    {
+        if (!currentCamera)
+        {
+            currentCamera = Camera.main;
+            return;
+        }
+
+        // Check for phase transitions
+        if (currentPhase == GamePhase.StandbyPhase && phaseTransitionCoroutine == null)
+        {
+            StartPhaseTransition();
+        }
+
+        if (currentPhase == GamePhase.StandbyPhase)
+        {
+            // Check for Player 2's third turn
+            if (turnCounter == 6 && (isPlayer1Turn && turnCounter % 6 == 0) || (aiController.totalTurnsPlayed == 3 && (isPlayer1Turn && aiController.totalTurnsPlayed % 3 == 0))) // 6 because each player has 3 turns
+            {
+                turnCounter = 0;
+                aiController.totalTurnsPlayed = 0;
+                HandleCalamitySpawn();
+            }
+        }
+
+        if (currentPhase == GamePhase.MainPhase1)
+        {
+            HandleMainPhase();
+        }
+
+        if (currentPhase == GamePhase.ActionPhase)
+        {
+            HandleActionPhase();
+        }
+
+        if (currentPhase == GamePhase.MainPhase2)
+        {
+            HandleMainPhase();
+        }
+
+        if (currentPhase == GamePhase.EndPhase)
+        {
+            HandleEndPhase();
+            if (aiController.AI)
+                aiController.calamitiesHandled = false;
+        }
+
+        // If it's AI's turn, disable player interaction and trigger AI turn
+        if (aiController.IsAITurn())
+        {
+            changeTurnButton.interactable = false;
+            aiController.StartAITurn();
+            return; // Exit Update while AI is taking its turn
+        }
+
+        // Only handle camera transitions if not rolling dice
+        if (!isRollingDice && !aiController.AI)
+        {
+            HandleCameraTransition();
         }
     }
 
@@ -552,8 +1060,6 @@ public class Shipboard : MonoBehaviour
         Vector2Int targetPosition = new Vector2Int(x, y);
         bool isPirateHideout = pirateHideoutPositions.Contains(targetPosition);
 
-        // Check if the target position is occupied by a ReefSpawner
-        // Check if the target position is occupied by a ReefSpawner
         if (reefPositions.Contains(targetPosition))
         {
             Debug.Log($"Move to {targetPosition} failed: Reef present.");
@@ -585,14 +1091,24 @@ public class Shipboard : MonoBehaviour
 
         Vector2Int previousPosition = new Vector2Int(sp.currentX, sp.currentY);
 
+        // Format the move string (e.g. A:5)
+        string prevPosString = ConvertPositionToBoardString(previousPosition);
+        string targetPosString = ConvertPositionToBoardString(targetPosition);
+
         //Is there another piece on the target position?
         if (shipboardPieces[x, y] != null)
         {
-            Debug.Log("Dice is not yet instantiated");
             ShipPieces osp = shipboardPieces[x, y];
 
             if (sp.team == osp.team)
                 return false;
+
+            if (sp.team != osp.team)
+            {
+                string logEntry = $"Player {sp.team + 1} {sp.type} sinks Player {osp.team + 1} {osp.type} in {targetPosString}";
+                logText += logEntry + "\n"; // Append to the logText
+                Debug.Log(logEntry);
+            }
 
             //If it's the enemy team
             if (osp.team == 0)
@@ -615,6 +1131,15 @@ public class Shipboard : MonoBehaviour
                 osp.gameObject.SetActive(false);
             }
         }
+        // Log the move action
+        else
+        {
+            string moveLogEntry = $"Player {sp.team + 1} {sp.type} moved to {targetPosString}";
+            logText += moveLogEntry + "\n"; // Append to the logText
+            Debug.Log(moveLogEntry);
+        }
+
+        listOfLogs.text = logText;
 
         shipboardPieces[x, y] = sp;
         shipboardPieces[previousPosition.x, previousPosition.y] = null;
@@ -639,6 +1164,32 @@ public class Shipboard : MonoBehaviour
                 break;
             case 1:
                 victoryManager.Checkmate(sp.team);
+
+                // Check if it's in AI mode and unlock the next level
+                if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironment)
+                {
+                    // Unlock the next level if the current one is completed
+                    int currentAILevel = GameManager.instance.currentAILevel;
+                    SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
+                    sceneLoader.UnlockNextLevel(currentAILevel);
+                }
+
+                if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironmentMedium)
+                {
+                    // Unlock the next level if the current one is completed
+                    int currentAILevel = GameManager.instance.currentAILevel;
+                    SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
+                    sceneLoader.UnlockNextLevel(currentAILevel, isMedium: true);
+                }
+
+                if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironmentHard)
+                {
+                    // Unlock the next level if the current one is completed
+                    int currentAILevel = GameManager.instance.currentAILevel;
+                    SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
+                    sceneLoader.UnlockNextLevel(currentAILevel, isHard: true);
+                }
+
                 break;
             case 2:
                 victoryManager.Checkmate(2);
@@ -652,9 +1203,22 @@ public class Shipboard : MonoBehaviour
 
         if (changeTurn)
         {
-            isPlayer1Turn = !isPlayer1Turn;
+            //isPlayer1Turn = !isPlayer1Turn;
         }
+
+        movedShip = true;
+
+        if (currentPhase == GamePhase.ActionPhase)
+            SetButtonInteractability();
+
         return true;
+    }
+    // Utility function to convert grid position to board notation (e.g. A:5)
+    private string ConvertPositionToBoardString(Vector2Int position)
+    {
+        char column = (char)('A' + position.x);
+        int row = position.y + 1; // Assuming the board's rows start from 1
+        return $"{column}:{row}";
     }
     //Overloaded Method
     // Modified MoveTo method to accept availableMoves as a parameter
@@ -880,7 +1444,7 @@ public class Shipboard : MonoBehaviour
             moves.Remove(movesToRemove[i]);
     }
     //Check for Checkmate
-    private int CheckForCheckMate()
+    public int CheckForCheckMate()
     {
         var lastMove = moveList[moveList.Count - 1];
 
@@ -1042,6 +1606,7 @@ public class Shipboard : MonoBehaviour
         // Deactivate the CheckText GameObject after waiting
         CheckText.SetActive(false);
     }
+
     private void HandleCameraTransition()
     {
         if (isRollingDice) return; // Skip handling camera transition if a dice roll is in progress
@@ -1071,7 +1636,39 @@ public class Shipboard : MonoBehaviour
             currentCamera.transform.rotation = Quaternion.Lerp(currentCamera.transform.rotation, player2CameraPortraitRotation, Time.deltaTime * cameraLerpSpeed);
             Screen.orientation = ScreenOrientation.PortraitUpsideDown;
         }
+
+        RotateAndScaleCanvas();
     }
+
+    private void RotateAndScaleCanvas()
+    {
+        // Define rotation and scale vectors for player 1
+        Vector3 player1Rotation = new Vector3(0, 0, 0);
+        Vector3 player1Scale = new Vector3(1.10397005f, 1.10397005f, 1.10397005f);
+
+        // Define rotation and scale vectors for player 2
+        Vector3 player2Rotation = new Vector3(0, 180, 0);
+        Vector3 player2Scale = new Vector3(1.10397005f, -1.10397005f, 1.10397005f);
+
+        // Check which player's turn it is and apply the corresponding rotation and scale
+        if (isPlayer1Turn)
+        {
+            TimerCanvas.transform.localEulerAngles = player1Rotation;
+            TimerCanvas.transform.localScale = player1Scale;
+
+            AvatarCanvas.transform.localEulerAngles = player1Rotation;
+            AvatarCanvas.transform.localScale = player1Scale;
+        }
+        else
+        {
+            TimerCanvas.transform.localEulerAngles = player2Rotation;
+            TimerCanvas.transform.localScale = player2Scale;
+
+            AvatarCanvas.transform.localEulerAngles = player2Rotation;
+            AvatarCanvas.transform.localScale = player2Scale;
+        }
+    }
+
 
     private void CheckDiceRoll()
     {
@@ -1198,7 +1795,10 @@ public class Shipboard : MonoBehaviour
 
     private IEnumerator ReturnCameraToOriginalPosition()
     {
-        yield return StartCoroutine(LerpCameraToPosition(originalCameraPosition.position, originalCameraPosition.rotation));
+        if (isPlayer1Turn)
+            yield return StartCoroutine(LerpCameraToPosition(player1CameraLandscapePosition, player1CameraLandscapeRotation));
+        else if (!isPlayer1Turn && !aiController.AI)
+            yield return StartCoroutine(LerpCameraToPosition(player2CameraLandscapePosition, player2CameraLandscapeRotation));
         // Reset the dice roll variables
         isRollingDice = false; // Resume normal camera transitions
     }
@@ -1285,6 +1885,8 @@ public class Shipboard : MonoBehaviour
                             PositionWhirlpoolCenter(whirlpoolCenter, centerX, centerY);
                             whirlpoolCenterPosition.Add(new Vector2Int(centerX, centerY));
                             activeWhirlpools.Add(whirlpoolCenter);
+
+                            toggleCalamities.SetWhirlpoolCenter(whirlpoolCenter);
                         }
                     }
                     else
@@ -1451,7 +2053,7 @@ public class Shipboard : MonoBehaviour
         }
 
         // Instantiate the ReefSpawner at the specified position.
-        GameObject reef = Instantiate(reefPrefab, new Vector3(x, 0, y), Quaternion.identity);
+        GameObject reef = Instantiate(reefPrefab, new Vector3(x, 0, y), Quaternion.Euler(-90f, 0, 0));
         reef.transform.SetParent(transform);
 
         // Position the ReefSpawner correctly in the grid.
@@ -1510,9 +2112,12 @@ public class Shipboard : MonoBehaviour
                         {
                             waterspoutCenter = Instantiate(waterspoutCenterPrefab, new Vector3(centerX, centerY, 0), Quaternion.identity);
                             waterspoutCenter.transform.SetParent(transform);
+
                             PositionWaterspoutCenter(waterspoutCenter, centerX, centerY);
                             waterspoutCenterPosition.Add(new Vector2Int(centerX, centerY));
                             activeWaterspouts.Add(waterspoutCenter);
+
+                            toggleCalamities.SetWaterspoutCenter(waterspoutCenter);
                         }
                     }
                     else
@@ -1529,6 +2134,7 @@ public class Shipboard : MonoBehaviour
             }
         }
     }
+
     // Method to spawn a random waterspout at a valid unoccupied position.
     private void SpawnRandomWaterspout()
     {
@@ -1863,26 +2469,31 @@ public class Shipboard : MonoBehaviour
     {
         // Randomly decide to spawn either a reef (0) or a whirlpool (1)
         int calamityType = mt.Next(5); // Generates 0, 1, 2, 3, 4
-
+        
         if (calamityType == 0)
         {
             SpawnRandomReef(); // Spawn a reef
+            Debug.Log("Spawn Random Reef");
         }
         else if (calamityType == 1)
         {
             SpawnRandomWaterspout();
+            Debug.Log("Spawn Random Water Spout");
         }
         else if (calamityType == 2)
         {
             SpawnRandomTreacherousCurrent();
+            Debug.Log("Spawn Random Treacherous Current");
         }
         else if (calamityType == 3)
         {
             SpawnRandomPirateHideout();
+            Debug.Log("Spawn Random Pirate Hideout");
         }
         else
         {
-            SpawnRandomWhirlpool(); // Spawn a whirlpool
+            SpawnRandomWhirlpool();
+            Debug.Log("Spawn Random Whirlpool");
         }
     }
     private void ClearCalamities()

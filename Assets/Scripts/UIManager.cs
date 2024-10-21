@@ -12,7 +12,9 @@ public class UIManager : MonoBehaviour
     public GameObject loadGameScreen;
     public GameObject howToPlayScreen;
     public GameObject settingScreen;
+    public GameObject settingPanelScreen;
     public GameObject aboutUsScreen;
+    public GameObject debugScreen;
 
     [Header("Player vs Player Screen")]
     public GameObject playerVsPlayerScreen;
@@ -42,7 +44,7 @@ public class UIManager : MonoBehaviour
         else if (instance != null)
         {
             Debug.Log("Instance already exists, destroying object!");
-            Destroy(this);
+            DontDestroyOnLoad(this);
         }
         hologramManager = FindObjectOfType<HologramManager>(); // Find the hologram manager
         colorController = FindObjectOfType<ColorController>();
@@ -140,6 +142,14 @@ public class UIManager : MonoBehaviour
             Debug.Log("No Color Selected for Player 2");
         }
     }
+    public void DebugScreen()
+    {
+        if (debugScreen != null)
+        {
+            ClearUI();
+            debugScreen.gameObject.SetActive(true);
+        }
+    }
     public void AIDifficultyScreen()
     {
         ClearUI();
@@ -165,10 +175,14 @@ public class UIManager : MonoBehaviour
         mainMenuScreen.SetActive(false);
         battleModeScreen.SetActive(false);
         howToPlayScreen.SetActive(false);
+        settingScreen.SetActive(false);
+
+        if (debugScreen != null)
+            debugScreen.SetActive(false);
 
         //Clear UI for PVP
         playerVsPlayerScreen.SetActive(false);
-        p1AvatarScreen.gameObject.SetActive(false);
+      p1AvatarScreen.gameObject.SetActive(false);
         p1HandicapScreen.SetActive(false);
         p2AvatarScreen.gameObject.SetActive(false);
         p2HandicapScreen.SetActive(false);
@@ -180,5 +194,6 @@ public class UIManager : MonoBehaviour
         aiDifficultyScreen.SetActive(false);
         easyDifficultyScreen.SetActive(false);
         mediumDifficultyScreen.SetActive(false);
+        hardDifficultyScreen.SetActive(false);
     }
 }

@@ -21,6 +21,10 @@ public class GameManager : MonoBehaviour
     public Color player1Color;
     public Color player2Color;
 
+    public float? selectedTimer;
+
+    public int currentAILevel;
+
     private void Awake()
     {
         if (instance == null)

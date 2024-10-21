@@ -7,13 +7,28 @@ public class AIController : MonoBehaviour
 {
     // Reference to Shipboard script
     public Shipboard shipboard;
+    public bool calamitiesHandled = false; // Flag to check if calamities were handled
+
 
     // Variables moved to Shipboard
-    private int totalTurnsPlayed = 0;
+    public int totalTurnsPlayed = 0;
     public AITreeLoader aiTree;
     public bool AI = true;
     // Flag to indicate whether the AI is currently processing its turn
     private bool aiTurnInProgress = false;
+
+    // New variable to manage the game phases
+    private GamePhase currentPhase;
+
+    // GamePhase Enum to define game phases
+    private enum GamePhase
+    {
+        StandbyPhase,
+        MainPhase1,
+        ActionPhase,
+        MainPhase2,
+        EndPhase
+    }
 
     private Dictionary<string, float> featureWeights = new Dictionary<string, float>
     {
@@ -46,8 +61,46 @@ public class AIController : MonoBehaviour
     {
         if (!aiTurnInProgress && IsAITurn())
         {
-            StartCoroutine(AITurn());
+            StartCoroutine(AIAutoPhaseProgression());
         }
+    }
+
+    // The AI's phases progression Coroutine
+    public IEnumerator AIAutoPhaseProgression()
+    {
+        // Start at StandbyPhase
+        currentPhase = GamePhase.StandbyPhase;
+        yield return new WaitForSeconds(2f); // Wait for 5 seconds
+
+        // Move to MainPhase1
+        currentPhase = GamePhase.MainPhase1;
+        yield return new WaitForSeconds(2f); // Wait for 5 seconds
+        
+        // Move to ActionPhase
+        currentPhase = GamePhase.ActionPhase;
+        StartCoroutine(AITurn());
+        yield return new WaitForSeconds(2f); // Wait for 5 seconds
+        
+        // Move to MainPhase2
+        currentPhase = GamePhase.MainPhase2;
+        yield return new WaitForSeconds(2f); // Wait for 5 seconds
+        
+        // Move to EndPhase
+        currentPhase = GamePhase.EndPhase;
+
+        // Handle calamities only once
+        if (!calamitiesHandled)
+        {
+            shipboard.HandleCalamities();
+            calamitiesHandled = true; // Set the flag to true after handling
+        }
+
+        yield return new WaitForSeconds(2f); // Wait for 5 seconds
+
+        // End of AI's turn, switch to Player 1
+        shipboard.SetIsPlayer1Turn(true);
+        aiTurnInProgress = false; // Reset AI turn flag
+        shipboard.changeTurnButton.interactable = true;
     }
 
     // The AITurn Coroutine moved from the main script
@@ -198,12 +251,7 @@ public class AIController : MonoBehaviour
                     shipboard.SetIsPlayer1Turn(true);
                     aiTurnInProgress = false;
                     totalTurnsPlayed++;
-                    shipboard.HandleCalamities();
 
-                    if (totalTurnsPlayed % 3 == 0)
-                    {
-                        shipboard.HandleCalamitySpawn();
-                    }
                 }
                 else
                 {

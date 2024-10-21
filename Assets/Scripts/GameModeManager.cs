@@ -3,13 +3,15 @@ using UnityEngine;
 public enum GameMode
 {
     PlayerVsEnvironment,
+    PlayerVsEnvironmentMedium,
+    PlayerVsEnvironmentHard,
     PlayerVsPlayer,
     Tutorial
 }
 
 public class GameModeManager : MonoBehaviour
 {
-    private static GameModeManager instance;
+    public static GameModeManager instance;
     public GameMode currentGameMode;
 
     private void Awake()
