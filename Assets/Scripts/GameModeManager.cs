@@ -6,7 +6,13 @@ public enum GameMode
     PlayerVsEnvironmentMedium,
     PlayerVsEnvironmentHard,
     PlayerVsPlayer,
-    Tutorial
+    TutorialDestroyer,
+    TutorialDestroyerASW,
+    TutorialLightCruiser,
+    TutorialAirplaneCarrier,
+    TutorialSubmarine,
+    TutorialFlagship,
+    TutorialDockyard
 }
 
 public class GameModeManager : MonoBehaviour

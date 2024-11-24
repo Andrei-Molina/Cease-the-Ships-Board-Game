@@ -108,6 +108,7 @@ public class Shipboard : MonoBehaviour
     public ColorController colorController;
     public ToggleCalamities toggleCalamities;
     public AvatarButtonsManager avatarButtonsManager;
+    public AvatarScreenController avatarScreenController;
 
     private bool isPlayer1Turn;
 
@@ -118,9 +119,11 @@ public class Shipboard : MonoBehaviour
     [Header("Check")]
     public GameObject CheckText;
 
-    [Header("Timer")]
+    [Header("Timer and Name")]
     public TextMeshProUGUI player1TimerText;
     public TextMeshProUGUI player2TimerText;
+    [SerializeField] private TextMeshProUGUI player1Name;
+    [SerializeField] private TextMeshProUGUI player2Name;
 
     [Header("Canvas")]
     public GameObject AvatarCanvas;
@@ -211,24 +214,35 @@ public class Shipboard : MonoBehaviour
     private Coroutine phaseTransitionCoroutine;
     private Image phaseSelectionImage;
 
+    private int currentAILevel;
+
+    public ShipboardSceneManager shipboardSceneManager;
+
     private void Start()
     {
+        // Unlock the next level if the current one is completed
+        currentAILevel = GameManager.instance.currentAILevel;
         avatarButtonsManager = FindObjectOfType<AvatarButtonsManager>();
-     
+        GameModeManager modeManager = FindObjectOfType<GameModeManager>();
+        ColorController colorController = FindObjectOfType<ColorController>();
+        avatarScreenController = FindObjectOfType<AvatarScreenController>();
+
+        UIManager.instance.avatarScreenController.ChangeAvatarIfAI();
+
         phaseCanvas.gameObject.SetActive(true);
         phaseText.gameObject.SetActive(true);
         currentPhaseImage.gameObject.SetActive(true);
 
         phaseSelectionImage = phaseSelectionText.GetComponent<Image>();
 
+        player1Name.text = GameManager.instance.player1Name;
+        player2Name.text = GameManager.instance.player2Name;
+
         //Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.ScriptOnly);
         isPlayer1Turn = true;
         // Seed the Mersenne Twister with the current time in ticks, converted to a 32-bit unsigned integer.
         uint seed = (uint)(DateTime.Now.Ticks & 0xFFFFFFFF);
         mt = new MersenneTwister(seed);
-
-        GameModeManager modeManager = FindObjectOfType<GameModeManager>();
-        ColorController colorController = FindObjectOfType<ColorController>();
 
         // Display Player 1's avatar if it exists
         if (GameManager.instance.player1Avatar != null)
@@ -240,6 +254,10 @@ public class Shipboard : MonoBehaviour
         // Set the AI property based on the game mode
         if (modeManager.currentGameMode == GameMode.PlayerVsEnvironment)
             aiController.AI = true; // Set AI to true for Player vs Environment
+        else if (modeManager.currentGameMode == GameMode.PlayerVsEnvironmentMedium)
+            aiController.AI = true;
+        else if (modeManager.currentGameMode == GameMode.PlayerVsEnvironmentHard)
+            aiController.AI = true;
         else
             aiController.AI = false; // Set AI to false for Player vs Player
 
@@ -247,6 +265,18 @@ public class Shipboard : MonoBehaviour
 
         SpawnAllPieces();
         PositionAllPieces();
+
+        shipboardSceneManager = FindObjectOfType<ShipboardSceneManager>();
+        if (shipboardSceneManager != null)
+        {
+            shipboardSceneManager.InitializeBackground(); // Set background image
+            shipboardSceneManager.InitializeCalamities(); // Set calamities for the level
+        }
+        else
+        {
+            Debug.LogWarning("ShipboardSceneManager not found in the scene.");
+        }
+
         SpawnRandomCalamity();
 
         float timerValue = GameManager.instance.selectedTimer ?? 0; // Default to 0 if null
@@ -599,10 +629,8 @@ public class Shipboard : MonoBehaviour
         phaseText.gameObject.SetActive(true);
         currentPhaseImage.gameObject.SetActive(true);
 
-
-
         // Update the phase image based on the active player's color
-        Color playerColor = isPlayer1Turn ? GameManager.instance.player1Color : GameManager.instance.player2Color;
+        Color playerColor = isPlayer1Turn ? GameManager.instance.player1Color : (!GameManager.instance.AI ? GameManager.instance.player2Color : GameManager.instance.aiColor);
         currentPhaseImage.sprite = GetPhaseBackgroundSprite(playerColor);
         phaseSelectionImage.sprite = GetPhaseSelectionTextBackgroundSprite(playerColor); 
 
@@ -653,8 +681,6 @@ public class Shipboard : MonoBehaviour
             _ => ""
         };
     }
-
-
     public float lerpDuration = 0.2f; // Duration for lerping
     public float waitDuration = 3f; // Duration to stay at (0,0)
     private Vector2 startPosition = new Vector2(1765, 0);
@@ -849,7 +875,7 @@ public class Shipboard : MonoBehaviour
         if (currentPhase == GamePhase.StandbyPhase)
         {
             // Check for Player 2's third turn
-            if (turnCounter == 6 && (isPlayer1Turn && turnCounter % 6 == 0) || (aiController.totalTurnsPlayed == 3 && (isPlayer1Turn && aiController.totalTurnsPlayed % 3 == 0))) // 6 because each player has 3 turns
+            if (turnCounter == 6 && (isPlayer1Turn && turnCounter % 6 == 0) || (aiController.totalTurnsPlayed == 3 && (isPlayer1Turn && aiController.totalTurnsPlayed % 3 == 0))) // 6 because each player has to do 3 turns before calamity has a chance of respawning/despawning
             {
                 turnCounter = 0;
                 aiController.totalTurnsPlayed = 0;
@@ -989,10 +1015,14 @@ public class Shipboard : MonoBehaviour
 
         //Player 1
         ShipPieceType player1Flagship, player1Submarine, player1AircraftCarrier, player1LightCruiser, player1Dockyard, player1Destroyer, player1DestroyerASW;
-        ShipPieceType player2Flagship, player2Submarine, player2AircraftCarrier, player2LightCruiser, player2Dockyard, player2Destroyer, player2DestroyerASW;
+        ShipPieceType player2Flagship = default, player2Submarine = default, player2AircraftCarrier = default, player2LightCruiser = default, player2Dockyard = default, player2Destroyer = default, player2DestroyerASW = default;
 
         SetShipTypesForPlayer(GameManager.instance.player1Color, out player1Flagship, out player1Submarine, out player1AircraftCarrier, out player1LightCruiser, out player1Dockyard, out player1Destroyer, out player1DestroyerASW);
-        SetShipTypesForPlayer(GameManager.instance.player2Color, out player2Flagship, out player2Submarine, out player2AircraftCarrier, out player2LightCruiser, out player2Dockyard, out player2Destroyer, out player2DestroyerASW);
+
+        if (!GameManager.instance.AI)
+            SetShipTypesForPlayer(GameManager.instance.player2Color, out player2Flagship, out player2Submarine, out player2AircraftCarrier, out player2LightCruiser, out player2Dockyard, out player2Destroyer, out player2DestroyerASW);
+        else if (GameManager.instance.AI)
+            SetShipTypesForPlayer(GameManager.instance.aiColor, out player2Flagship, out player2Submarine, out player2AircraftCarrier, out player2LightCruiser, out player2Dockyard, out player2Destroyer, out player2DestroyerASW);
 
         // Player 1
         if (GameManager.instance.player1Handicap != HandicapType.SubmarineHandicap)
@@ -1168,26 +1198,23 @@ public class Shipboard : MonoBehaviour
                 // Check if it's in AI mode and unlock the next level
                 if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironment)
                 {
-                    // Unlock the next level if the current one is completed
-                    int currentAILevel = GameManager.instance.currentAILevel;
                     SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
                     sceneLoader.UnlockNextLevel(currentAILevel);
                 }
 
                 if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironmentMedium)
                 {
-                    // Unlock the next level if the current one is completed
-                    int currentAILevel = GameManager.instance.currentAILevel;
                     SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
                     sceneLoader.UnlockNextLevel(currentAILevel, isMedium: true);
                 }
 
                 if (GameModeManager.instance.currentGameMode == GameMode.PlayerVsEnvironmentHard)
                 {
-                    // Unlock the next level if the current one is completed
-                    int currentAILevel = GameManager.instance.currentAILevel;
                     SceneLoader sceneLoader = FindObjectOfType<SceneLoader>();
-                    sceneLoader.UnlockNextLevel(currentAILevel, isHard: true);
+                    sceneLoader.UnlockNextLevel(currentAILevel, isHard: true);   
+                    
+                    /*DebugUnlockLevels.instance.UnlockHardLevel(currentAILevel + 1);
+                    break;*/
                 }
 
                 break;
@@ -1904,7 +1931,7 @@ public class Shipboard : MonoBehaviour
         }
     }
     // Method to spawn a random whirlpool at a valid unoccupied position.
-    private void SpawnRandomWhirlpool()
+    public void SpawnRandomWhirlpool()
     {
         int x, y;
         do
@@ -2029,7 +2056,7 @@ public class Shipboard : MonoBehaviour
     {
         reefPositions.Add(new Vector2Int(x, y));
     }
-    private void SpawnRandomReef()
+    public void SpawnRandomReef()
     {
         // Find a random position for the reef that is not occupied.
         int x, y;
@@ -2136,7 +2163,7 @@ public class Shipboard : MonoBehaviour
     }
 
     // Method to spawn a random waterspout at a valid unoccupied position.
-    private void SpawnRandomWaterspout()
+    public void SpawnRandomWaterspout()
     {
         int x, y;
         do
@@ -2300,7 +2327,7 @@ public class Shipboard : MonoBehaviour
         // Map the position to the prefab index for movement tracking
         treacherousCurrentPositionToPrefabIndex[currentPosition] = prefabIndex;
     }
-    private void SpawnRandomTreacherousCurrent()
+    public void SpawnRandomTreacherousCurrent()
     {
         // Find a random position for the Treacherous Current that is not occupied.
         int x, y;
@@ -2410,7 +2437,7 @@ public class Shipboard : MonoBehaviour
         pirateHideoutPositions.Add(new Vector2Int(x, y));
     }
 
-    private void SpawnRandomPirateHideout()
+    public void SpawnRandomPirateHideout()
     {
         // Find a random position for the pirate hideout that is not occupied.
         int x, y;
@@ -2494,6 +2521,7 @@ public class Shipboard : MonoBehaviour
         {
             SpawnRandomWhirlpool();
             Debug.Log("Spawn Random Whirlpool");
+
         }
     }
     private void ClearCalamities()

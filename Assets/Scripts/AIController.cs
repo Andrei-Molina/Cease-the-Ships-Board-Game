@@ -1,24 +1,44 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using UnityEngine;
 
 public class AIController : MonoBehaviour
 {
+    private Dictionary<ShipPieces, bool> pieceThreatCache = new Dictionary<ShipPieces, bool>();
+    private Dictionary<string, Dictionary<string, float>> qTable = new Dictionary<string, Dictionary<string, float>>();
+    private string qTableFilePath;
+    private float learningRate = 0.1f;
+    private float discountFactor = 0.9f;
+    private float explorationRate = 0.1f;
+
     // Reference to Shipboard script
     public Shipboard shipboard;
+
     public bool calamitiesHandled = false; // Flag to check if calamities were handled
+    // Track metrics
+    private float minScore = 0;
+    private float maxScore = 0;
 
-
-    // Variables moved to Shipboard
     public int totalTurnsPlayed = 0;
     public AITreeLoader aiTree;
     public bool AI = true;
     // Flag to indicate whether the AI is currently processing its turn
     private bool aiTurnInProgress = false;
 
-    // New variable to manage the game phases
+    // to manage the game phases
     private GamePhase currentPhase;
+
+    private int totalNodesExplored = 0;
+    private int totalMovesEvaluated = 0;
+    private float pruningEfficiency = 0;
+    private int pruningCount = 0;
+    private float bestMoveDecisionTime = 0;
+
+    private float totalReward = 0f;
+    private int totalMoves = 0;
 
     // GamePhase Enum to define game phases
     private enum GamePhase
@@ -29,15 +49,6 @@ public class AIController : MonoBehaviour
         MainPhase2,
         EndPhase
     }
-
-    private Dictionary<string, float> featureWeights = new Dictionary<string, float>
-    {
-        {"turns", 0.1f},            // Weight for the number of turns
-        {"victory_status", -1.0f},  // Weight for victory status (negative if you want to prioritize winning)
-        {"increment_code", 0.05f},   // Weight for time increment
-        {"opening_eco", 0.2f}       // Weight for ECO
-    };
-
     // Start is called before the first frame update
     void Start()
     {
@@ -46,8 +57,16 @@ public class AIController : MonoBehaviour
 
         if (shipboard == null)
         {
-            Debug.LogError("Shipboard script not found in the scene.");
+            //UnityEngine.Debug.LogError("Shipboard script not found in the scene.");
         }
+
+        qTableFilePath = Path.Combine(Application.dataPath, "Resources", "QTable.json");
+        LoadQTable();
+    }
+
+    void OnDestroy()
+    {
+        SaveQTable();
     }
 
     // Public method to check if it's AI's turn
@@ -65,6 +84,82 @@ public class AIController : MonoBehaviour
         }
     }
 
+    // Load the Q-table from a JSON file in Resources
+    private void LoadQTable()
+    {
+        if (File.Exists(qTableFilePath))
+        {
+            string json = File.ReadAllText(qTableFilePath);
+            qTable = JsonUtility.FromJson<SerializableQTable>(json).ToDictionary();
+        }
+    }
+
+    // Save the Q-table to a JSON file in Resources
+    private void SaveQTable()
+    {
+        SerializableQTable serializableQTable = new SerializableQTable(qTable);
+        string json = JsonUtility.ToJson(serializableQTable, true);
+        File.WriteAllText(qTableFilePath, json);
+    }
+
+    // Convert the board state to a string for use as a Q-table key
+    private string GetStateKey()
+    {
+        ShipPieces[,] pieces = shipboard.GetShipboardPieces();
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        for (int x = 0; x < shipboard.GetTileCountX(); x++)
+            for (int y = 0; y < shipboard.GetTileCountY(); y++)
+                sb.Append(pieces[x, y] != null ? pieces[x, y].GetHashCode().ToString() : "0");
+        return sb.ToString();
+    }
+
+    // Add these variables globally
+    private float totalQValueError = 0f;
+    private int qValueUpdateCount = 0;
+
+    // Q-Learning update rule
+    private float UpdateQValue(string state, string action, float reward, string nextState)
+    {
+        if (!qTable.ContainsKey(state))
+            qTable[state] = new Dictionary<string, float>();
+
+        if (!qTable[state].ContainsKey(action))
+            qTable[state][action] = 0f;
+
+        float maxNextQ = qTable.ContainsKey(nextState) ? qTable[nextState].Values.Max() : 0f;
+        float currentQ = qTable[state][action];
+        float newQ = currentQ + learningRate * (reward + discountFactor * maxNextQ - currentQ);
+        // Log all relevant values for debugging
+        UnityEngine.Debug.Log($"State: {state}, Action: {action}");
+        UnityEngine.Debug.Log($"Current Q-value: {currentQ}");
+        UnityEngine.Debug.Log($"Reward: {reward}");
+        UnityEngine.Debug.Log($"Max Q-value of next state: {maxNextQ}");
+        UnityEngine.Debug.Log($"Learning Rate: {learningRate}");
+        UnityEngine.Debug.Log($"Discount Factor: {discountFactor}");
+        UnityEngine.Debug.Log($"Calculated new Q-value: {newQ}");
+
+        /*
+        totalReward += reward;
+        totalMoves++;
+
+        // Log average reward
+        UnityEngine.Debug.Log($"Average Reward Per Move: {totalReward / totalMoves}");
+
+        // Calculate Q-value error
+        float qError = Mathf.Abs(newQ - (reward + discountFactor * maxNextQ));
+        totalQValueError += qError;
+        qValueUpdateCount++;
+
+        // Log Q-value accuracy
+        UnityEngine.Debug.Log($"Q-Value Error: {qError}");
+        UnityEngine.Debug.Log($"Average Q-Value Error (Accuracy): {totalQValueError / qValueUpdateCount}");
+        */
+
+        qTable[state][action] = newQ;
+
+        return newQ;
+    }
+
     // The AI's phases progression Coroutine
     public IEnumerator AIAutoPhaseProgression()
     {
@@ -75,16 +170,16 @@ public class AIController : MonoBehaviour
         // Move to MainPhase1
         currentPhase = GamePhase.MainPhase1;
         yield return new WaitForSeconds(2f); // Wait for 5 seconds
-        
+
         // Move to ActionPhase
         currentPhase = GamePhase.ActionPhase;
         StartCoroutine(AITurn());
         yield return new WaitForSeconds(2f); // Wait for 5 seconds
-        
+
         // Move to MainPhase2
         currentPhase = GamePhase.MainPhase2;
         yield return new WaitForSeconds(2f); // Wait for 5 seconds
-        
+
         // Move to EndPhase
         currentPhase = GamePhase.EndPhase;
 
@@ -103,27 +198,19 @@ public class AIController : MonoBehaviour
         shipboard.changeTurnButton.interactable = true;
     }
 
-    // The AITurn Coroutine moved from the main script
     public IEnumerator AITurn()
     {
-        const float ZONE_CONTROL_WEIGHT = 1.5f;
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
         aiTurnInProgress = true;
         yield return new WaitForSeconds(0.5f);
-        Debug.Log("AITurn being processed");
-
-        if (aiTree == null || aiTree.decisionTree == null)
-        {
-            Debug.LogError("aiTree or decisionTree is not initialized.");
-            yield break;
-        }
+        //UnityEngine.Debug.Log("AITurn being processed");
 
         if (shipboard.GetIsPlayer1Turn() || !AI) yield break;
 
         List<ShipPieces> aiPieces = new List<ShipPieces>();
         ShipPieces[,] shipboardPieces = shipboard.GetShipboardPieces();
 
-        // Collect AI pieces
         for (int x = 0; x < shipboard.GetTileCountX(); x++)
         {
             for (int y = 0; y < shipboard.GetTileCountY(); y++)
@@ -131,141 +218,292 @@ public class AIController : MonoBehaviour
                 if (shipboardPieces[x, y] != null && shipboardPieces[x, y].team == 1)
                 {
                     aiPieces.Add(shipboardPieces[x, y]);
-                    Debug.Log($"Found AI piece: {shipboardPieces[x, y].name} at ({x}, {y})");
                 }
             }
         }
 
-        if (aiPieces.Count > 0)
+        //float bestScore = float.NegativeInfinity;
+        Dictionary<(ShipPieces piece, Vector2Int move), float> moveQValues = new Dictionary<(ShipPieces, Vector2Int), float>();
+
+        foreach (var piece in aiPieces)
         {
-            List<(ShipPieces piece, Vector2Int move, List<Vector2Int> availableMoves)> bestMoves = new List<(ShipPieces, Vector2Int, List<Vector2Int>)>();
-            float bestOutcome = float.MinValue;
+            List<Vector2Int> availableMoves = piece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
+            PreventCheckForAI(piece, ref availableMoves);
 
-            foreach (ShipPieces selectedPiece in aiPieces)
+            foreach (var move in availableMoves)
             {
-                Vector2Int previousPosition = new Vector2Int(selectedPiece.currentX, selectedPiece.currentY);
-                List<Vector2Int> availableMoves = selectedPiece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
-                Debug.Log($"Current piece: {selectedPiece.name} at position ({selectedPiece.currentX}, {selectedPiece.currentY}) with available moves: {string.Join(", ", availableMoves)}");
-                // Prevent AI from moving into a position that puts it in check
-                PreventCheckForAI(selectedPiece, ref availableMoves);
+                // Calculate move score using Minimax
+                float moveScore = MinimaxAlphaBeta(shipboardPieces, depth: 1, alpha: float.NegativeInfinity, beta: float.PositiveInfinity, isMaximizingPlayer: false);
 
-                foreach (Vector2Int moveToPosition in availableMoves)
+                // Calculate Q-value for the move
+                float newQ = UpdateQValue(GetStateKey(), piece.GetHashCode() + "-" + move, moveScore, GetStateKey());
+                moveQValues.Add((piece, move), newQ);
+
+                UnityEngine.Debug.Log($"Evaluating move: {piece.type} -> ({move.x}, {move.y}). Evaluation value: {moveScore}, Q-value: {newQ}");
+            }
+        }
+
+        // Select the moves with the highest Q-value
+        if (moveQValues.Count > 0)
+        {
+            float maxQValue = float.NegativeInfinity;
+            foreach (var qValue in moveQValues.Values)
+            {
+                if (qValue > maxQValue) maxQValue = qValue;
+            }
+
+            var bestMoves = moveQValues.Where(kvp => kvp.Value == maxQValue).Select(kvp => kvp.Key).ToList();
+
+            // Randomly choose one of the best moves
+            var (selectedPiece, selectedMove) = bestMoves[UnityEngine.Random.Range(0, bestMoves.Count)];
+            bool moveSuccessful = shipboard.MoveTo(selectedPiece, selectedMove.x, selectedMove.y, selectedPiece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY()));
+
+            UnityEngine.Debug.Log($"Selected move: {selectedMove} for piece: {selectedPiece}. Q-value of the move: {maxQValue}");
+
+            if (moveSuccessful)
+            {
+                shipboard.SetIsPlayer1Turn(true);
+                aiTurnInProgress = false;
+                totalTurnsPlayed++;
+            }
+        }
+        else
+        {
+            UnityEngine.Debug.Log("AI has no valid moves to make.");
+        }
+
+        stopwatch.Stop();
+        bestMoveDecisionTime = stopwatch.ElapsedMilliseconds / 1000f;
+        //LogMetrics(maxDepth: 3);
+    }
+
+    public float MinimaxAlphaBeta(ShipPieces[,] shipboardPieces, int depth, float alpha, float beta, bool isMaximizingPlayer)
+    {
+
+        if (depth == 0)
+        {
+            totalMovesEvaluated++;
+            float boardValue = EvaluateBoard(shipboardPieces);
+            UnityEngine.Debug.Log($"EvaluateBoard value: {boardValue}");
+            return boardValue;
+        }
+
+        List<ShipPieces> pieces = new List<ShipPieces>();
+        int currentTeam = isMaximizingPlayer ? 0 : 1;
+
+        for (int x = 0; x < shipboard.GetTileCountX(); x++)
+        {
+            for (int y = 0; y < shipboard.GetTileCountY(); y++)
+            {
+                if (shipboardPieces[x, y] != null && shipboardPieces[x, y].team == currentTeam)
+                    pieces.Add(shipboardPieces[x, y]);
+            }
+        }
+
+        if (isMaximizingPlayer)
+        {
+            float maxEval = float.NegativeInfinity;
+            foreach (var piece in pieces)
+            {
+                List<Vector2Int> moves = piece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
+
+                int originalX = piece.currentX;
+                int originalY = piece.currentY;
+
+                foreach (var move in moves)
                 {
-                    ShipPieces targetPiece = shipboardPieces[moveToPosition.x, moveToPosition.y];
-                    float valueChange = 0;
-                    float safetyValue = 0;
+                    ShipPieces targetPiece = shipboardPieces[move.x, move.y];
+                    shipboardPieces[piece.currentX, piece.currentY] = null;
+                    shipboardPieces[move.x, move.y] = piece;
+                    piece.currentX = move.x;
+                    piece.currentY = move.y;
 
-                    if (targetPiece != null && targetPiece.team != selectedPiece.team)
+                    totalNodesExplored++;
+
+                    // Perform Minimax search
+                    float eval = MinimaxAlphaBeta(shipboardPieces, depth - 1, alpha, beta, false);
+
+                    // Update Q-value for the state-action pair
+                    string stateKey = GetStateKey();
+                    string actionKey = piece.GetHashCode() + "-" + move;
+                    string nextState = GetStateKey();
+                    UpdateQValue(stateKey, actionKey, eval, nextState);
+
+                    maxEval = Mathf.Max(maxEval, eval);
+                    alpha = Mathf.Max(alpha, eval);
+
+                    // Undo move
+                    piece.currentX = originalX;
+                    piece.currentY = originalY;
+                    shipboardPieces[move.x, move.y] = targetPiece;
+                    shipboardPieces[originalX, originalY] = piece;
+
+                    if (beta <= alpha)
                     {
-                        valueChange = targetPiece.pieceValue;
-                        Debug.Log($"Evaluating capture of opponent piece: {targetPiece.name} with value {valueChange}");
-                    }
+                        pruningCount++;
+                        break;
+                    }         
+                }
+            }
+            return maxEval;
+        }
+        else
+        {
+            float minEval = float.PositiveInfinity;
+            foreach (var piece in pieces)
+            {
+                List<Vector2Int> moves = piece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
 
-                    foreach (var opponentPiece in GetOpponentPieces())
-                    {
-                        var opponentMoves = opponentPiece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
-                        if (opponentMoves.Contains(moveToPosition))
-                        {
-                            safetyValue -= selectedPiece.pieceValue;
-                            Debug.Log($"Move to {moveToPosition} is unsafe due to opponent piece: {opponentPiece.name}");
-                        }
-                    }
+                int originalX = piece.currentX;
+                int originalY = piece.currentY;
 
-                    var boardState = new Dictionary<string, float>
+                foreach (var move in moves)
                 {
-                    {"turns", GetTurnNumber() * featureWeights["turns"]},
-                    {"victory_status", shipboard.GetIsPlayer1Turn() ? 0f : 1f * featureWeights["victory_status"]},
-                    {"increment_code", CalculateIncrementCode() * featureWeights["increment_code"]},
-                    {"opening_eco", CalculateOpeningECO() * featureWeights["opening_eco"]}
-                };
+                    ShipPieces targetPiece = shipboardPieces[move.x, move.y];
+                    shipboardPieces[piece.currentX, piece.currentY] = null;
+                    shipboardPieces[move.x, move.y] = piece;
+                    piece.currentX = move.x;
+                    piece.currentY = move.y;
 
-                    float outcome = (aiTree.EvaluateUsingTree(boardState) * 2.5f) + valueChange + safetyValue + (ZONE_CONTROL_WEIGHT * CountControlledZones());
-                    Debug.Log($"Evaluating move for {selectedPiece.name} to {moveToPosition} yielded outcome: {outcome}");
+                    totalNodesExplored++;
 
-                    float worstOpponentOutcome = float.MaxValue;
-                    foreach (ShipPieces opponentPiece in GetOpponentPieces())
+                    // Perform Minimax search
+                    float eval = MinimaxAlphaBeta(shipboardPieces, depth - 1, alpha, beta, true);
+
+                    // Update Q-value for the state-action pair
+                    string stateKey = GetStateKey();
+                    string actionKey = piece.GetHashCode() + "-" + move;
+                    string nextState = GetStateKey();
+                    UpdateQValue(stateKey, actionKey, eval, nextState);
+
+                    minEval = Mathf.Min(minEval, eval);
+                    beta = Mathf.Min(beta, eval);
+
+                    // Undo move
+                    piece.currentX = originalX;
+                    piece.currentY = originalY;
+                    shipboardPieces[move.x, move.y] = targetPiece;
+                    shipboardPieces[originalX, originalY] = piece;
+
+                    if (beta <= alpha)
                     {
-                        var opponentMoves = opponentPiece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
-                        foreach (Vector2Int opponentMove in opponentMoves)
-                        {
-                            var opponentBoardState = new Dictionary<string, float>
-                        {
-                            {"turns", GetTurnNumber() * featureWeights["turns"]},
-                            {"victory_status", shipboard.GetIsPlayer1Turn() ? 1f : 0f * featureWeights["victory_status"]},
-                            {"increment_code", CalculateIncrementCode() * featureWeights["increment_code"]},
-                            {"opening_eco", CalculateOpeningECO() * featureWeights["opening_eco"]}
-                        };
-
-                            ShipPieces opponentTargetPiece = shipboardPieces[opponentMove.x, opponentMove.y];
-                            float opponentValueChange = 0;
-                            float opponentSafetyValue = 0;
-
-                            if (opponentTargetPiece != null && opponentTargetPiece.team != opponentPiece.team)
-                            {
-                                opponentValueChange = opponentTargetPiece.pieceValue;
-                            }
-
-                            foreach (var aiPiece in aiPieces)
-                            {
-                                var aiPieceMoves = aiPiece.GetAvailableMoves(ref shipboardPieces, shipboard.GetTileCountX(), shipboard.GetTileCountY());
-                                if (aiPieceMoves.Contains(opponentMove))
-                                {
-                                    opponentSafetyValue -= opponentPiece.pieceValue;
-                                }
-                            }
-
-                            float opponentOutcome = aiTree.EvaluateUsingTree(opponentBoardState) + opponentValueChange + opponentSafetyValue;
-                            worstOpponentOutcome = Mathf.Min(worstOpponentOutcome, opponentOutcome);
-                        }
-                    }
-
-                    outcome -= worstOpponentOutcome;
-
-                    Debug.Log($"Adjusted outcome for move {moveToPosition}: {outcome} (after considering worst opponent outcome)");
-
-                    if (outcome > bestOutcome)
-                    {
-                        bestOutcome = outcome;
-                        bestMoves.Clear();
-                        bestMoves.Add((selectedPiece, moveToPosition, availableMoves));
-                        Debug.Log($"New best outcome found: {bestOutcome} for move to {moveToPosition}");
-                    }
-                    else if (outcome == bestOutcome)
-                    {
-                        bestMoves.Add((selectedPiece, moveToPosition, availableMoves));
+                        pruningCount++;
+                        break;
                     }
                 }
             }
-
-            if (bestMoves.Count > 0)
-            {
-                var (bestPiece, bestMove, availableMoves) = bestMoves[Random.Range(0, bestMoves.Count)];
-
-                Debug.Log($"AI selected piece at {bestPiece.currentX}, {bestPiece.currentY} to move to {bestMove.x}, {bestMove.y} with outcome {bestOutcome}");
-                bool moveSuccessful = shipboard.MoveTo(bestPiece, bestMove.x, bestMove.y, availableMoves);
-
-                Debug.Log($"Best move executed to ({bestMove.x}, {bestMove.y}). Move result: {moveSuccessful}");
-
-                if (moveSuccessful)
-                {
-                    shipboard.SetIsPlayer1Turn(true);
-                    aiTurnInProgress = false;
-                    totalTurnsPlayed++;
-
-                }
-                else
-                {
-                    Debug.LogWarning("MoveTo method failed.");
-                }
-            }
-            else
-            {
-                Debug.Log("AI couldn't find any valid moves.");
-            }
+            return minEval;
         }
     }
 
+    // Improved Threat Check with caching to avoid repeated calculations
+    private bool IsPieceThreatened(ShipPieces piece, ShipPieces[,] board)
+    {
+        if (pieceThreatCache.TryGetValue(piece, out bool isThreatened))
+            return isThreatened;
 
+        int tileCountX = shipboard.GetTileCountX();
+        int tileCountY = shipboard.GetTileCountY();
+
+        foreach (var opponentPiece in GetTeamPieces(board, team: 0)) // opponent team = 0
+        {
+            foreach (var move in opponentPiece.GetAvailableMoves(ref board, tileCountX, tileCountY))
+                if (move.x == piece.currentX && move.y == piece.currentY)
+                {
+                    pieceThreatCache[piece] = true;
+                    return true;
+                }
+        }
+
+        pieceThreatCache[piece] = false;
+        return false;
+    }
+
+    private float EvaluateBoard(ShipPieces[,] board)
+    {
+        float score = 0;
+        ShipPieces aiFlagship = null;
+
+        // Locate the AI flagship
+        for (int x = 0; x < shipboard.GetTileCountX(); x++)
+        {
+            for (int y = 0; y < shipboard.GetTileCountY(); y++)
+            {
+                ShipPieces piece = board[x, y];
+                if (piece != null && piece.team == 1 &&
+                   (piece.type == ShipPieceType.RedFlagship ||
+                    piece.type == ShipPieceType.BlueFlagship ||
+                    piece.type == ShipPieceType.BlackFlagship ||
+                    piece.type == ShipPieceType.SilverFlagship))
+                {
+                    aiFlagship = piece;
+                    break;
+                }
+            }
+        }
+
+        // Evaluate all pieces and adjust score based on their positioning, risks, and capture opportunities
+        for (int x = 0; x < shipboard.GetTileCountX(); x++)
+        {
+            for (int y = 0; y < shipboard.GetTileCountY(); y++)
+            {
+                ShipPieces piece = board[x, y];
+                if (piece != null)
+                {
+                    float pieceValue = GetPieceValue(piece);
+                    score += (piece.team == 1 ? pieceValue : -pieceValue);
+
+                    // Check if AI pieces are in danger
+                    if (piece.team == 1 && IsPieceThreatened(piece, board))
+                    {
+                        score -= pieceValue * 0.5f; // Apply penalty for AI pieces in danger
+                    }
+
+                    // Check if AI flagship is in a threatened position
+                    if (piece == aiFlagship && IsPieceThreatened(piece, board))
+                    {
+                        score -= pieceValue; // Apply additional penalty for flagship being threatened
+                    }
+                }
+            }
+        }
+
+        // Additional score adjustments for potential moves (captures and safety)
+        foreach (var piece in GetTeamPieces(board, team: 1)) // AI team = 1
+        {
+            List<Vector2Int> availableMoves = piece.GetAvailableMoves(ref board, shipboard.GetTileCountX(), shipboard.GetTileCountY());
+            foreach (var move in availableMoves)
+            {
+                ShipPieces targetPiece = board[move.x, move.y];
+                float valueChange = 0;
+                float safetyValue = 0;
+
+                // Check if move captures an opponent piece
+                if (targetPiece != null && targetPiece.team != piece.team)
+                {
+                    valueChange = targetPiece.pieceValue;
+                }
+
+                /*
+                // Evaluate risk for moving to this position
+                bool isRisky = false;
+                foreach (var opponentPiece in GetOpponentPieces())
+                {
+                    List<Vector2Int> opponentMoves = opponentPiece.GetAvailableMoves(ref board, shipboard.GetTileCountX(), shipboard.GetTileCountY());
+                    if (opponentMoves.Contains(move))
+                    {
+                        safetyValue -= piece.pieceValue;
+                        isRisky = true;
+                    }
+                }*/
+
+                // Update score for this move based on potential capture and risk
+                score += valueChange + safetyValue;
+            }
+        }
+
+        return score;
+    }
 
     // Counts and returns the remaining ships for the Player (team 0)
     private List<ShipPieces> GetOpponentPieces()
@@ -286,111 +524,78 @@ public class AIController : MonoBehaviour
         return opponentPieces;
     }
 
-    // Counts the remaining ships for the AI (team 1)
-    private int CountAIShips()
-    {
-        int aiShipCount = 0;
+    private float GetPieceValue(ShipPieces piece) => piece.pieceValue;
 
-        for (int x = 0; x < shipboard.GetTileCountX(); x++)
-        {
-            for (int y = 0; y < shipboard.GetTileCountY(); y++)
-            {
-                if (shipboard.GetShipboardPieces()[x, y] != null && shipboard.GetShipboardPieces()[x, y].team == 1)
-                {
-                    aiShipCount++;
-                }
-            }
-        }
-
-        return aiShipCount;
-    }
-
-    // Counts the remaining ships for the Player (team 2)
-    private int CountPlayerShips()
-    {
-        int playerShipCount = 0;
-
-        for (int x = 0; x < shipboard.GetTileCountX(); x++)
-        {
-            for (int y = 0; y < shipboard.GetTileCountY(); y++)
-            {
-                if (shipboard.GetShipboardPieces()[x, y] != null && shipboard.GetShipboardPieces()[x, y].team == 0)
-                {
-                    playerShipCount++;
-                }
-            }
-        }
-
-        return playerShipCount;
-    }
-
-    private const int TOTAL_ZONES = 8; // Example value, adjust based on your game
-
-    // Count how many important zones are controlled by AI (team 1)
-    private int CountControlledZones()
-    {
-        int controlledZoneCount = 0;
-
-        // Define key positions on the board that are strategically important (customize based on your game's grid)
-        List<Vector2Int> importantZones = new List<Vector2Int>
-    {
-        new Vector2Int(1, 2),  // Example positions
-        new Vector2Int(2, 2),  // Add as many key positions as necessary
-        new Vector2Int(3, 2),
-        new Vector2Int(4, 2),
-        new Vector2Int(2, 3),
-        new Vector2Int(2, 4),
-        new Vector2Int(3, 3),
-        new Vector2Int(3, 4)
-    };
-
-        // Iterate through the list of key positions
-        foreach (Vector2Int zone in importantZones)
-        {
-            // Check if the AI (team 1) controls the zone
-            ShipPieces piece = shipboard.GetShipboardPieces()[zone.x, zone.y];
-            if (piece != null && piece.team == 1)
-            {
-                controlledZoneCount++;
-            }
-        }
-
-        return controlledZoneCount; // Return the number of zones controlled by AI
-    }
-    private int GetTurnNumber()
-    {
-        // Example method to return the current turn number
-        return totalTurnsPlayed;
-    }
-
-    // Example method for abstract evaluation of the game state
-    private float CalculateIncrementCode()
-    {
-        // As an example, increment this value based on AI's piece count vs player's piece count
-        int aiShips = CountAIShips();
-        int playerShips = CountPlayerShips();
-
-        return (aiShips - playerShips) + 10f; // Adjust based on your game's logic
-    }
-
-    private float CalculateOpeningECO()
-    {
-        // You can use this to represent board control. For example, count how many of the most important positions are occupied.
-        int controlledZones = CountControlledZones();
-        return controlledZones / (float)TOTAL_ZONES; // Normalize the value based on the total zones
-    }
     public void PreventCheckForAI(ShipPieces selectedPiece, ref List<Vector2Int> availableMoves)
     {
         ShipPieces targetFlagship = null;
 
-        // Identify the AI's flagship
         for (int x = 0; x < shipboard.GetTileCountX(); x++)
             for (int y = 0; y < shipboard.GetTileCountY(); y++)
                 if (shipboard.GetShipboardPieces()[x, y] != null && shipboard.GetShipboardPieces()[x, y].team == selectedPiece.team)
                     if (shipboard.GetShipboardPieces()[x, y].type == ShipPieceType.RedFlagship || shipboard.GetShipboardPieces()[x, y].type == ShipPieceType.BlueFlagship || shipboard.GetShipboardPieces()[x, y].type == ShipPieceType.BlackFlagship || shipboard.GetShipboardPieces()[x, y].type == ShipPieceType.SilverFlagship)
                         targetFlagship = shipboard.GetShipboardPieces()[x, y];
 
-        // Simulate moves and remove any that would put the AI in check
         shipboard.SimulateMoveForSinglePiece(selectedPiece, ref availableMoves, targetFlagship);
+    }
+    private List<ShipPieces> GetTeamPieces(ShipPieces[,] board, int team)
+    {
+        List<ShipPieces> pieces = new List<ShipPieces>();
+        for (int x = 0; x < shipboard.GetTileCountX(); x++)
+            for (int y = 0; y < shipboard.GetTileCountY(); y++)
+                if (board[x, y] != null && board[x, y].team == team)
+                    pieces.Add(board[x, y]);
+        return pieces;
+    }
+
+    // Serializable wrapper for saving/loading the Q-table
+    [System.Serializable]
+    private class SerializableQTable
+    {
+        public List<StateActionPair> stateActions = new List<StateActionPair>();
+
+        public SerializableQTable(Dictionary<string, Dictionary<string, float>> qTable)
+        {
+            foreach (var state in qTable)
+                foreach (var action in state.Value)
+                    stateActions.Add(new StateActionPair(state.Key, action.Key, action.Value));
+        }
+
+        public Dictionary<string, Dictionary<string, float>> ToDictionary()
+        {
+            var dict = new Dictionary<string, Dictionary<string, float>>();
+            foreach (var pair in stateActions)
+            {
+                if (!dict.ContainsKey(pair.state))
+                    dict[pair.state] = new Dictionary<string, float>();
+                dict[pair.state][pair.action] = pair.qValue;
+            }
+            return dict;
+        }
+    }
+
+    [System.Serializable]
+    private class StateActionPair
+    {
+        public string state;
+        public string action;
+        public float qValue;
+
+        public StateActionPair(string state, string action, float qValue)
+        {
+            this.state = state;
+            this.action = action;
+            this.qValue = qValue;
+        }
+    }
+
+    public void LogMetrics(int maxDepth)
+    {
+        pruningEfficiency = (float)pruningCount / totalNodesExplored;
+        UnityEngine.Debug.Log($"Maximum Depth: {maxDepth}");
+        UnityEngine.Debug.Log($"Number of Evaluated Moves: {totalMovesEvaluated}");
+        UnityEngine.Debug.Log($"Best Move Decision Time: {bestMoveDecisionTime}s");
+        UnityEngine.Debug.Log($"Total Nodes Explored: {totalNodesExplored}");
+        UnityEngine.Debug.Log($"Pruning Efficiency: {pruningEfficiency:P}");
     }
 }

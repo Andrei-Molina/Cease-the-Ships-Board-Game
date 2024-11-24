@@ -6,6 +6,21 @@ public class DebugUnlockLevels : MonoBehaviour
     private const string LEVEL_UNLOCK_KEY_MEDIUM = "UnlockedLevelMedium";
     private const string LEVEL_UNLOCK_KEY_HARD = "UnlockedLevelHard";
 
+    public static DebugUnlockLevels instance;
+
+    private void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+            DontDestroyOnLoad(gameObject); // Make this object persist between scenes
+        }
+        else
+        {
+            Destroy(gameObject); // Destroy duplicate instances
+        }
+    }
+
     // Unlock specific levels in Easy difficulty using different methods
     [ContextMenu("Unlock Easy Level 1")]
     public void UnlockEasyLevel1()

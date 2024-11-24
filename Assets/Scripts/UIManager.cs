@@ -1,6 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class UIManager : MonoBehaviour
 {
@@ -24,6 +26,7 @@ public class UIManager : MonoBehaviour
     public GameObject p2HandicapScreen;
     public GameObject p1ColorScreen;
     public GameObject p2ColorScreen;
+    public GameObject aiColorScreen;
     public GameObject timerScreen;
 
     [Header("AI Difficulty Screens")]
@@ -34,6 +37,11 @@ public class UIManager : MonoBehaviour
 
     private HologramManager hologramManager;
     private ColorController colorController;
+    private HandicapController handicapController;
+    public AvatarScreenController avatarScreenController;
+
+    public Button[] DifficultyButtons;
+    private int selectedDifficultyIndex = -1; // Track selected difficulty button index
 
     private void Awake() // Awake Instance
     {
@@ -48,19 +56,45 @@ public class UIManager : MonoBehaviour
         }
         hologramManager = FindObjectOfType<HologramManager>(); // Find the hologram manager
         colorController = FindObjectOfType<ColorController>();
+        handicapController = FindObjectOfType<HandicapController>();
+        avatarScreenController = FindObjectOfType<AvatarScreenController>();
+    }
+
+    private void Start()
+    {
+        // Add listeners to the difficulty buttons
+        for (int i = 0; i < DifficultyButtons.Length; i++)
+        {
+            int index = i; // Capture the index
+            DifficultyButtons[i].onClick.AddListener(() => SelectDifficulty(index));
+        }
     }
 
     public void MainMenu() // Show Main Menu Screen
     {
         ClearUI();
+        GameManager.instance.AI = false;
+        GameManager.instance.player1Avatar = null;
+        GameManager.instance.player2Avatar = null;
+        GameManager.instance.player1Handicap = null;
+        GameManager.instance.player2Handicap = null;
+        colorController.ResetAllColorButtonsInteractability();
+        handicapController.ResetPlayer1HandicapButtons();
+        handicapController.ResetPlayer2HandicapButtons();
+        avatarScreenController.ResetPlayer1Values();
+        avatarScreenController.ResetPlayer2Values();
         hologramManager.ResetHologramStates(); // Reset hologram states
         mainMenuScreen.SetActive(true);
+        SetDifficultyButtonsInteractableToTrue();
     }
 
     public void BattleModeScreen() // Show Main Menu Screen
     {
         ClearUI();
+        GameManager.instance.AI = false;
         battleModeScreen.SetActive(true);
+
+        SetDifficultyButtonsInteractableToTrue();
     }
 
     public void LoadScreen()
@@ -100,9 +134,14 @@ public class UIManager : MonoBehaviour
     }
     public void Player1ColorScreen()
     {
-        ClearUI();
-        playerVsPlayerScreen.SetActive(true);
-        p1ColorScreen.SetActive(true);
+        if (GameManager.instance.player1Handicap != null)
+        {
+            Debug.Log(GameManager.instance.player1Handicap);
+            ClearUI();
+            playerVsPlayerScreen.SetActive(true);
+            p1ColorScreen.SetActive(true);
+            colorController.ResetColorButtonsInteractability();
+        }
     }
     public void Player2AvatarScreen()
     {
@@ -125,9 +164,12 @@ public class UIManager : MonoBehaviour
     }
     public void Player2ColorScreen()
     {
-        ClearUI();
-        playerVsPlayerScreen.SetActive(true);
-        p2ColorScreen.SetActive(true);
+        if (GameManager.instance.player2Handicap != null)
+        {
+            ClearUI();
+            playerVsPlayerScreen.SetActive(true);
+            p2ColorScreen.SetActive(true);
+        }
     }
     public void TimerScreen()
     {
@@ -153,23 +195,104 @@ public class UIManager : MonoBehaviour
     public void AIDifficultyScreen()
     {
         ClearUI();
+        SetDifficultyButtonsInteractableToTrue();
         aiDifficultyScreen.SetActive(true);
     }
-    public void EasyDifficultyScreen()
+    private void EasyDifficultyScreen()
     {
         ClearUI();
         easyDifficultyScreen.SetActive(true);
     }
-    public void MediumDifficultyScreen()
+    private void MediumDifficultyScreen()
     {
         ClearUI();
         mediumDifficultyScreen.SetActive(true);
     }
-    public void HardDifficultyScreen()
+    private void HardDifficultyScreen()
     {
         ClearUI();
         hardDifficultyScreen.SetActive(true);
     }
+    private void AIColorScreen()
+    {
+        ClearUI();
+        playerVsPlayerScreen.SetActive(true);
+        aiColorScreen.SetActive(true);
+    }
+    public void Player1ShipColorDoneClicked()
+    {
+        if (GameManager.instance.AI)
+            AIColorScreen();
+        else if (!GameManager.instance.AI)
+            Player2AvatarScreen();
+    }
+    public void SelectDifficulty(int index)
+    {
+        // If a different button was selected
+        if (selectedDifficultyIndex != index)
+        {
+            // Make the previously selected button interactable again
+            if (selectedDifficultyIndex >= 0 && selectedDifficultyIndex < DifficultyButtons.Length)
+            {
+                DifficultyButtons[selectedDifficultyIndex].interactable = true;
+            }
+
+            // Set the new button as non-interactable
+            DifficultyButtons[index].interactable = false;
+
+            // Update the selected index
+            selectedDifficultyIndex = index;
+
+            Debug.Log("Selected Difficulty: " + index); // For debugging
+        }
+    }
+
+    // Method called when deploy button is clicked
+    public void DeployAIButtonClicked()
+    {
+        if (selectedDifficultyIndex == 0) // Easy
+        {
+            EasyDifficultyScreen();
+        }
+        else if (selectedDifficultyIndex == 1) // Medium
+        {
+            MediumDifficultyScreen();
+        }
+        else if (selectedDifficultyIndex == 2) // Hard
+        {
+            HardDifficultyScreen();
+        }
+
+        GameManager.instance.AI = true;
+    }
+
+    public void AvatarRetreatButtonClicked()
+    {
+        if (GameManager.instance.AI)
+        {
+            if (selectedDifficultyIndex == 0)
+                EasyDifficultyScreen();
+            else if (selectedDifficultyIndex == 1)
+                MediumDifficultyScreen();
+            else if (selectedDifficultyIndex == 2)
+                HardDifficultyScreen();
+        }
+        else if (!GameManager.instance.AI)
+        {
+            BattleModeScreen();
+        }
+    }
+
+    private void SetDifficultyButtonsInteractableToTrue()
+    {
+        //Iterate through each button and make them interactable again
+        for (int i = 0; i < DifficultyButtons.Length; i++)
+            DifficultyButtons[i].interactable = true;
+        
+        //Reset selectedIndex
+        selectedDifficultyIndex = -1;
+    }
+
     private void ClearUI() // Clear all UI
     {
         mainMenuScreen.SetActive(false);
@@ -182,12 +305,13 @@ public class UIManager : MonoBehaviour
 
         //Clear UI for PVP
         playerVsPlayerScreen.SetActive(false);
-      p1AvatarScreen.gameObject.SetActive(false);
+        p1AvatarScreen.gameObject.SetActive(false);
         p1HandicapScreen.SetActive(false);
         p2AvatarScreen.gameObject.SetActive(false);
         p2HandicapScreen.SetActive(false);
         p1ColorScreen.SetActive(false);
         p2ColorScreen.SetActive(false);
+        aiColorScreen.SetActive(false);
         timerScreen.SetActive(false);
 
         //Clear UI for PVE
@@ -195,5 +319,10 @@ public class UIManager : MonoBehaviour
         easyDifficultyScreen.SetActive(false);
         mediumDifficultyScreen.SetActive(false);
         hardDifficultyScreen.SetActive(false);
+    }
+
+    public int GetSelectedDifficultyIndex()
+    {
+        return selectedDifficultyIndex;
     }
 }

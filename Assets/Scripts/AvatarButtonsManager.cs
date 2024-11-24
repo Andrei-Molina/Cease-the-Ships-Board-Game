@@ -81,6 +81,9 @@ public class AvatarButtonsManager : MonoBehaviour
             {
                 TogglePlayerButtons(ref player2ButtonsVisible);
             }
+
+            phaseCanvas.SetActive(false);
+            ResetButtonsAlpha();
             TogglePlayerButtons(ref player1ButtonsVisible);
         }
     }
@@ -94,6 +97,8 @@ public class AvatarButtonsManager : MonoBehaviour
             {
                 TogglePlayerButtons(ref player1ButtonsVisible);
             }
+            phaseCanvas.SetActive(false);
+            ResetButtonsAlpha(); 
             TogglePlayerButtons(ref player2ButtonsVisible);
         }
     }
@@ -219,19 +224,27 @@ public class AvatarButtonsManager : MonoBehaviour
     // Method to check if at least one button image (excluding playerButtons[3]) is active (alpha == 1)
     public bool IsAtLeastOneButtonActive()
     {
-        Image[] buttonImages = GetPlayerButtonImages();
-
-        for (int i = 0; i < buttonImages.Length; i++)
+        for (int i = 0; i < playerButtonImages.Length; i++)
         {
-            // Exclude playerButtons[3]
+            // Skip button[3]
             if (i == 3) continue;
 
-            if (buttonImages[i] != null && buttonImages[i].color.a == 1f)
+            // Check if the button image is not null and alpha is above the threshold
+            if (playerButtonImages[i] != null && playerButtonImages[i].color.a >= 0.99f)
             {
-                return true; // Return true if at least one button is fully active
+                return true;
             }
         }
+        return false;
+    }
 
-        return false; // None of the buttons are fully active
+    // New method to reset button alpha values
+    private void ResetButtonsAlpha()
+    {
+        foreach (GameObject button in playerButtons)
+        {
+            SetButtonAlpha(button, 0); // Set all button alphas to 0
+            button.GetComponent<Button>().interactable = true; // Reset interactivity
+        }
     }
 }

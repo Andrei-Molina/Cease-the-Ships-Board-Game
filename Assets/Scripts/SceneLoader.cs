@@ -22,8 +22,24 @@ public class SceneLoader : MonoBehaviour
 
     //Loading Screen
     [SerializeField] private GameObject loadingScreen; // The loading screen with the slider
+    [SerializeField] private Image loadingScreenImage; // The image component on the loading screen GameObject
+    [SerializeField] private Sprite[] loadingScreenSprites; // Array to hold the possible loading screen sprites
     [SerializeField] private Slider loadingSlider; // The slider to fill over time
     [SerializeField] Animator loadingAnimator; // Animator to play "anim_loadship" animation
+
+    private GameMode selectedGameMode; // To store the chosen game mode
+    private int selectedLevel; // To store the chosen level
+
+        GameMode[] tutorialModes = new GameMode[]
+    {
+        GameMode.TutorialDestroyer,          // Index 11
+        GameMode.TutorialDestroyerASW,       // Index 12
+        GameMode.TutorialLightCruiser,       // Index 13
+        GameMode.TutorialAirplaneCarrier,    // Index 14
+        GameMode.TutorialSubmarine,          // Index 15
+        GameMode.TutorialFlagship,           // Index 16
+        GameMode.TutorialDockyard            // Index 17
+    };
 
 
     void Update()
@@ -69,7 +85,7 @@ public class SceneLoader : MonoBehaviour
                     button.interactable = true;
                     iconImage.sprite = unlockedIcon; // Set the unlocked icon
                     button.onClick.RemoveAllListeners(); // Clear existing listeners
-                    button.onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsEnvironment, level));
+                    button.onClick.AddListener(() => PrepareForDeployment(GameMode.PlayerVsEnvironment, level));
                 }
             }
         }
@@ -94,7 +110,7 @@ public class SceneLoader : MonoBehaviour
                     button.interactable = true;
                     iconImage.sprite = unlockedIcon; // Set the unlocked icon
                     button.onClick.RemoveAllListeners(); // Clear existing listeners
-                    button.onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsEnvironmentMedium, level));
+                    button.onClick.AddListener(() => PrepareForDeployment(GameMode.PlayerVsEnvironmentMedium, level));
                 }
             }
         }
@@ -119,16 +135,34 @@ public class SceneLoader : MonoBehaviour
                     button.interactable = true;
                     iconImage.sprite = unlockedIcon; // Set the unlocked icon
                     button.onClick.RemoveAllListeners(); // Clear existing listeners
-                    button.onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsEnvironmentHard, level));
+                    button.onClick.AddListener(() => PrepareForDeployment(GameMode.PlayerVsEnvironmentHard, level));
                 }
             }
         }
 
-        levelButtons[levelButtons.Length - 2].onClick.RemoveAllListeners();
-        levelButtons[levelButtons.Length - 2].onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsPlayer));
+        levelButtons[10].onClick.RemoveAllListeners();
+        levelButtons[10].onClick.AddListener(() => LoadBattlefieldScene(GameMode.PlayerVsPlayer));
 
-        levelButtons[levelButtons.Length - 1].onClick.RemoveAllListeners();
-        levelButtons[levelButtons.Length - 1].onClick.AddListener(() => LoadBattlefieldScene(GameMode.Tutorial));
+        levelButtons[11].onClick.RemoveAllListeners();
+        levelButtons[11].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialDestroyer));
+
+        levelButtons[12].onClick.RemoveAllListeners();
+        levelButtons[12].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialDestroyerASW));
+
+        levelButtons[13].onClick.RemoveAllListeners();
+        levelButtons[13].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialLightCruiser));
+
+        levelButtons[14].onClick.RemoveAllListeners();
+        levelButtons[14].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialAirplaneCarrier));
+
+        levelButtons[15].onClick.RemoveAllListeners();
+        levelButtons[15].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialSubmarine));
+
+        levelButtons[16].onClick.RemoveAllListeners();
+        levelButtons[16].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialFlagship));
+
+        levelButtons[17].onClick.RemoveAllListeners();
+        levelButtons[17].onClick.AddListener(() => LoadBattlefieldScene(GameMode.TutorialDockyard));
     }
     public void LoadBattlefieldScene(GameMode mode, int level = 1)
     {
@@ -145,6 +179,7 @@ public class SceneLoader : MonoBehaviour
         if (mode == GameMode.PlayerVsEnvironment || mode == GameMode.PlayerVsEnvironmentMedium || mode == GameMode.PlayerVsEnvironmentHard)
         {
             GameManager.instance.currentAILevel = level;
+            Debug.Log("Current AI Level: " + level);
         }
 
         // Start the loading coroutine
@@ -170,10 +205,13 @@ public class SceneLoader : MonoBehaviour
                 levelButtons[currentLevel].interactable = true; // Enable the button for the next easy level
         }
     }
-
     // Coroutine for simulating loading with slider
     private IEnumerator LoadWithProgress(GameMode mode, int level)
     {
+        // Randomly select a loading screen sprite and set it
+        int randomIndex = Random.Range(0, loadingScreenSprites.Length);
+        loadingScreenImage.sprite = loadingScreenSprites[randomIndex];
+
         loadingScreen.SetActive(true); // Activate loading screen
         loadingAnimator.Play("anim_LoadingShip"); // Play the loading animation
 
@@ -187,5 +225,19 @@ public class SceneLoader : MonoBehaviour
 
         // Load the scene once loading is done
         SceneManager.LoadScene("Battlefield");
+    }
+    private void PrepareForDeployment(GameMode mode, int level = 1)
+    {
+        selectedGameMode = mode;
+        selectedLevel = level;
+
+        UIManager uiManager = FindObjectOfType<UIManager>();
+        uiManager.Player1AvatarScreen(); // Call to transition to the avatar selection screen
+    }
+    // Method to be called when "Deploy" button is clicked after avatar selection
+    public void DeployToBattlefield()
+    {
+        if (GameManager.instance.aiColor != Color.clear)
+            LoadBattlefieldScene(selectedGameMode, selectedLevel);
     }
 }

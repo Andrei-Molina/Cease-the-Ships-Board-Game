@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 public enum HandicapType
 {
@@ -14,16 +15,22 @@ public class GameManager : MonoBehaviour
     public Sprite player1Avatar; // Store player 1's selected avatar
     public Sprite player2Avatar; // Store player 2's selected avatar
 
+    public string player1Name;
+    public string player2Name;
+
     // Default to no handicap
-    public HandicapType player1Handicap = HandicapType.NoHandicap; 
-    public HandicapType player2Handicap = HandicapType.NoHandicap;
+    public HandicapType? player1Handicap = null;
+    public HandicapType? player2Handicap = null;
 
     public Color player1Color;
     public Color player2Color;
+    public Color aiColor;
 
     public float? selectedTimer;
 
     public int currentAILevel;
+
+    public bool AI;
 
     private void Awake()
     {

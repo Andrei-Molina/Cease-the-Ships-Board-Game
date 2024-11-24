@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;  // For scene loading
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 
 public class HologramManager : MonoBehaviour
 {
@@ -21,6 +22,12 @@ public class HologramManager : MonoBehaviour
     // List of inactive and active buttons for each hologram
     [SerializeField] private List<Button> buttonsInactive;
     [SerializeField] private List<Button> buttonsActive;
+
+    [SerializeField] private string[] shipDescriptionTitle;
+    [SerializeField] private string[] shipDescriptionBody;
+    [SerializeField] private GameObject DescriptionBox;
+    [SerializeField] private TextMeshProUGUI shipTitle;
+    [SerializeField] private TextMeshProUGUI shipBody; 
 
     // State tracking for each hologram
     private List<bool> isHologramActive;
@@ -49,6 +56,9 @@ public class HologramManager : MonoBehaviour
         // Activate corresponding buttons and hologram
         buttonsActive[index].gameObject.SetActive(true);
         buttonsInactive[index].gameObject.SetActive(true);
+        DescriptionBox.gameObject.SetActive(true);
+        shipTitle.text = shipDescriptionTitle[index];
+        shipBody.text = shipDescriptionBody[index];
 
         HologramData hologramData = holograms[index];
         hologramData.hologramObject.SetActive(true);
@@ -192,6 +202,10 @@ public class HologramManager : MonoBehaviour
             buttonsInactive[i].gameObject.SetActive(true);  // Show all inactive buttons
             buttonsActive[i].gameObject.SetActive(false);   // Hide all active buttons
         }
+
+        DescriptionBox.gameObject.SetActive(false);
+        shipBody.text = "";
+        shipTitle.text = "";
     }
 
 }

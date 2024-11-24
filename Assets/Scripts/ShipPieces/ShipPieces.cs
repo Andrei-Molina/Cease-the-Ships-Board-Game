@@ -141,4 +141,11 @@ public class ShipPieces : MonoBehaviour
         if (force)
             transform.localScale = desiredScale;
     }
+    public ShipPieces Clone()
+    {
+        ShipPieces clone = (ShipPieces)this.MemberwiseClone();
+        // Copy any additional deep fields if needed
+        return clone;
+    }
+
 }
