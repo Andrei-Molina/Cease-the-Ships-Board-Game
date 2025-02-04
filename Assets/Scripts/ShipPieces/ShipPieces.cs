@@ -40,6 +40,15 @@ public enum ShipPieceType
 }
 
 [System.Serializable]
+public class Skill
+{
+    public string name;
+    public Sprite icon;
+    public System.Action<ShipPieces> Execute;
+    public int skillPointCost;
+}
+
+[System.Serializable]
 public class ShipPieces : MonoBehaviour
 {
     [SerializeField] public int team;
@@ -55,6 +64,19 @@ public class ShipPieces : MonoBehaviour
     [SerializeField] private Vector3 desiredScale = Vector3.one; //new Vector3(1, 1, 1)
     [SerializeField] private bool isMoving = false;
     [SerializeField] private float lerpSpeed = 1000f;
+
+    public bool isOutOfCommission = false;
+    public bool isRevealed = false;
+    public bool isBurned = false;
+    private int outOfCommissionTurn = -1; // Turn when the debuff was applied
+    private int revealedTurn = -1;
+    private int burnedTurn = -1;
+    private string debuffSource = ""; // Tracks the source of the debuff
+    private string revealedDebuffSource = "";
+    private string burnedDebuffSource = "";
+
+    public bool isFrightened = false;
+
     private void Start()
     {
         Vector3 rotation;
@@ -128,6 +150,11 @@ public class ShipPieces : MonoBehaviour
         return r;
     }
 
+    public virtual List<Skill> GetSkills()
+    {
+        return new List<Skill>(); // Default implementation returns no skills
+    }
+
     public virtual void SetPosition(Vector3 position, bool force = false)
     {
         desiredPosition = position;
@@ -147,5 +174,87 @@ public class ShipPieces : MonoBehaviour
         // Copy any additional deep fields if needed
         return clone;
     }
+    public void ApplyOutOfCommissionDebuff(string source = null)
+    {
+        isOutOfCommission = true;
+        debuffSource = source;
+        Debug.Log($"{name} is now Out of Commission!");
+        // Additional logic for disabling actions, reducing stats, etc.
+    }
+    public void ApplyOutOfCommissionDebuff(int currentTurn, string source = null)
+    {
+        isOutOfCommission = true;
+        debuffSource = source;
+        outOfCommissionTurn = currentTurn;
+        Debug.Log($"{name} is now Out of Commission for 2 turns (applied on turn {currentTurn}).");
+    }
 
+    public void ApplyRevealedDebuff(int currentTurn, string source = null)
+    {
+        isRevealed = true;
+        revealedDebuffSource = source;
+        revealedTurn = currentTurn;
+        Debug.Log($"{name} is now Revealed for 2 turns (applied on turn {currentTurn}).");
+    }
+
+    public void ApplyBurnDebuff(int currentTurn, string source = null)
+    {
+        isBurned = true;
+        burnedDebuffSource = source;
+        burnedTurn = currentTurn;
+        Debug.Log($"{name} is now Burned for 2 turns (applied on turn {currentTurn}).");
+    }
+
+    public void RemoveOutOfCommissionDebuff()
+    {
+        isOutOfCommission = false;
+        Debug.Log($"{name} is no longer Out of Commission.");
+    }
+
+    public void RemoveRevealedDebuff()
+    {
+        isRevealed = false;
+        Debug.Log($"{name} is no longer revealed.");
+    }
+    public void RemoveBurnDebuff()
+    {
+        isBurned = false;
+        Debug.Log($"{name} is no longer burning.");
+    }
+    public void CheckAndClearDebuff(int currentTurn)
+    {
+        if (isOutOfCommission && outOfCommissionTurn >= 0 && currentTurn >= outOfCommissionTurn + 2)
+        {
+            isOutOfCommission = false;
+            outOfCommissionTurn = -1; // Reset the turn tracker
+            Debug.Log($"{name} is no longer Out of Commission.");
+        }
+    }
+    public bool IsDebuffFromSource(string source)
+    {
+        return isOutOfCommission && debuffSource == source;
+    }
+
+    public void ApplyFrightenedDebuff(string source = null)
+    {
+        isFrightened = true;
+        debuffSource = source;
+        Debug.Log($"{name} is now Frightened by {source ?? "an unknown source"}!");
+        // Add additional frightened behavior logic here, e.g., restrict movement.
+    }
+
+    public void RemoveFrightenedDebuff()
+    {
+        isFrightened = false;
+        Debug.Log($"{name} is no longer Frightened.");
+    }
+
+    public bool IsFrightened()
+    {
+        return isFrightened;
+    }
+    public bool IsPlayer1()
+    {
+        return team == 0; // Returns true if the ship belongs to Player 1
+    }
 }

@@ -59,6 +59,10 @@ MonoBehaviour:
   desiredScale: {x: 1, y: 1, z: 1}
   isMoving: 0
   lerpSpeed: 1000
+  isOutOfCommission: 0
+  isFrightened: 0
+  deploySmokeIcon: {fileID: 0}
+  smokePrefab: {fileID: 7108923424391991239, guid: 03e0c32ecc3009c4facab29efad7757c, type: 3}
 --- !u!1 &2736372458555473726
 GameObject:
   m_ObjectHideFlags: 0

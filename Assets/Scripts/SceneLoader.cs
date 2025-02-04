@@ -30,6 +30,8 @@ public class SceneLoader : MonoBehaviour
     private GameMode selectedGameMode; // To store the chosen game mode
     private int selectedLevel; // To store the chosen level
 
+    private ErrorScreenManager errorScreenManager;
+
         GameMode[] tutorialModes = new GameMode[]
     {
         GameMode.TutorialDestroyer,          // Index 11
@@ -41,6 +43,10 @@ public class SceneLoader : MonoBehaviour
         GameMode.TutorialDockyard            // Index 17
     };
 
+    private void Start()
+    {
+        errorScreenManager = FindObjectOfType<ErrorScreenManager>();
+    }
 
     void Update()
     {
@@ -168,6 +174,7 @@ public class SceneLoader : MonoBehaviour
     {
         if (mode == GameMode.PlayerVsPlayer && GameManager.instance.selectedTimer == null)
         {
+            errorScreenManager.ShowErrorScreen(4);
             Debug.LogError("Error: Timer not selected! Please select a timer before starting the game.");
             return;
         }
@@ -205,6 +212,7 @@ public class SceneLoader : MonoBehaviour
                 levelButtons[currentLevel].interactable = true; // Enable the button for the next easy level
         }
     }
+
     // Coroutine for simulating loading with slider
     private IEnumerator LoadWithProgress(GameMode mode, int level)
     {
@@ -224,8 +232,10 @@ public class SceneLoader : MonoBehaviour
         }
 
         // Load the scene once loading is done
-        SceneManager.LoadScene("Battlefield");
+        SceneManager.LoadSceneAsync("Battlefield");
     }
+
+
     private void PrepareForDeployment(GameMode mode, int level = 1)
     {
         selectedGameMode = mode;
@@ -237,6 +247,12 @@ public class SceneLoader : MonoBehaviour
     // Method to be called when "Deploy" button is clicked after avatar selection
     public void DeployToBattlefield()
     {
+        if (GameManager.instance.aiColor == Color.clear)
+        {
+            errorScreenManager.ShowErrorScreen(3);
+            return;
+        }
+
         if (GameManager.instance.aiColor != Color.clear)
             LoadBattlefieldScene(selectedGameMode, selectedLevel);
     }

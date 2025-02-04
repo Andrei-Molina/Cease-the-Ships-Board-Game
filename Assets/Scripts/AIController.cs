@@ -265,6 +265,7 @@ public class AIController : MonoBehaviour
                 shipboard.SetIsPlayer1Turn(true);
                 aiTurnInProgress = false;
                 totalTurnsPlayed++;
+                GameManager.instance.turns++;
             }
         }
         else

@@ -179,6 +179,8 @@ public class AvatarScreenController : MonoBehaviour
 
             Debug.Log("Player 1 name set to: " + playerName);
         }
+
+        UIManager.instance.Player1HandicapScreen();
     }
 
     public void GetPlayer2Name()
@@ -199,6 +201,8 @@ public class AvatarScreenController : MonoBehaviour
 
             Debug.Log("Player 2 name set to: " + playerName);
         }
+
+        UIManager.instance.Player2HandicapScreen();
     }
 
     public void ResetPlayer1Values()

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -7,61 +8,71 @@ public class Submarine : ShipPieces
     {
         List<Vector2Int> r = new List<Vector2Int>();
 
-        //Down
-        for (int i = currentY - 1; i >= 0; i--)
-        {
-            if (board[currentX, i] == null)
-                r.Add(new Vector2Int(currentX, i));
+        int maxRange = isBurned ? 3 : Math.Max(tileCountX, tileCountY); // Limit to 3 if burned, otherwise unrestricted
 
-            if (board[currentX, i] != null)
+        // Down
+        for (int i = 1; i <= maxRange; i++)
+        {
+            int y = currentY - i;
+            if (y < 0) break;
+
+            if (board[currentX, y] == null)
+                r.Add(new Vector2Int(currentX, y));
+            else
             {
-                if (board[currentX, i].team != team)
-                    r.Add(new Vector2Int(currentX, i));
+                if (board[currentX, y].team != team)
+                    r.Add(new Vector2Int(currentX, y));
 
                 break;
             }
         }
 
-        //Up
-        for (int i = currentY + 1; i < tileCountY; i++)
+        // Up
+        for (int i = 1; i <= maxRange; i++)
         {
-            if (board[currentX, i] == null)
-                r.Add(new Vector2Int(currentX, i));
+            int y = currentY + i;
+            if (y >= tileCountY) break;
 
-            if (board[currentX, i] != null)
+            if (board[currentX, y] == null)
+                r.Add(new Vector2Int(currentX, y));
+            else
             {
-                if (board[currentX, i].team != team)
-                    r.Add(new Vector2Int(currentX, i));
+                if (board[currentX, y].team != team)
+                    r.Add(new Vector2Int(currentX, y));
 
                 break;
             }
         }
 
-        //Left
-        for (int i = currentX - 1; i >= 0; i--)
+        // Left
+        for (int i = 1; i <= maxRange; i++)
         {
-            if (board[i, currentY] == null)
-                r.Add(new Vector2Int(i, currentY));
+            int x = currentX - i;
+            if (x < 0) break;
 
-            if (board[i, currentY] != null)
+            if (board[x, currentY] == null)
+                r.Add(new Vector2Int(x, currentY));
+            else
             {
-                if (board[i, currentY].team != team)
-                    r.Add(new Vector2Int(i, currentY));
+                if (board[x, currentY].team != team)
+                    r.Add(new Vector2Int(x, currentY));
 
                 break;
             }
         }
 
-        //Right
-        for (int i = currentX + 1; i < tileCountX; i++)
+        // Right
+        for (int i = 1; i <= maxRange; i++)
         {
-            if (board[i, currentY] == null)
-                r.Add(new Vector2Int(i, currentY));
+            int x = currentX + i;
+            if (x >= tileCountX) break;
 
-            if (board[i, currentY] != null)
+            if (board[x, currentY] == null)
+                r.Add(new Vector2Int(x, currentY));
+            else
             {
-                if (board[i, currentY].team != team)
-                    r.Add(new Vector2Int(i, currentY));
+                if (board[x, currentY].team != team)
+                    r.Add(new Vector2Int(x, currentY));
 
                 break;
             }

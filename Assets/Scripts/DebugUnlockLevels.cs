@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class DebugUnlockLevels : MonoBehaviour
 {
@@ -8,16 +9,47 @@ public class DebugUnlockLevels : MonoBehaviour
 
     public static DebugUnlockLevels instance;
 
+    private WeatherIconsManager.WeatherType currentWeather;
+    private WeatherBackgroundManager weatherBackgroundManager;
+
+
+    public VictoryManager victoryManager; // Assign in the Inspector
+    public Shipboard shipboard; // Assign in the Inspector
+
     private void Awake()
     {
         if (instance == null)
         {
             instance = this;
             DontDestroyOnLoad(gameObject); // Make this object persist between scenes
+            SceneManager.sceneLoaded += OnSceneLoaded; // Subscribe to scene loaded event
         }
         else
         {
             Destroy(gameObject); // Destroy duplicate instances
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Unsubscribe from the event to avoid potential memory leaks
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // Check if the current scene is the Battlefield scene
+        if (scene.name == "Battlefield")
+        {
+            weatherBackgroundManager = FindObjectOfType<WeatherBackgroundManager>();
+            victoryManager = FindObjectOfType<VictoryManager>();
+            shipboard = FindObjectOfType<Shipboard>();
+        }
+        else
+        {
+            weatherBackgroundManager = null; // Clear the reference if not in Battlefield
+            victoryManager = null;
+            shipboard = null;
         }
     }
 
@@ -218,5 +250,108 @@ public class DebugUnlockLevels : MonoBehaviour
         PlayerPrefs.DeleteAll();
         PlayerPrefs.Save();
         Debug.Log("PlayerPrefs cleared.");
+    }
+
+    [ContextMenu("Change Weather to Sunny")]
+    public void SunnyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Sunny);
+    }
+    [ContextMenu("Change Weather to Cloudy")]
+    public void CloudyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Cloudy);
+    }
+    [ContextMenu("Change Weather to Rainy")]
+    public void RainyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Rainy);
+    }
+    [ContextMenu("Change Weather to Windy")]
+    public void WindyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Windy);
+    }
+    [ContextMenu("Change Weather to Sunny")]
+    public void StormyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Stormy);
+    }
+    [ContextMenu("Change Weather to Snowy")]
+    public void SnowyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Snowy);
+    }
+    [ContextMenu("Change Weather to Foggy")]
+    public void FoggyWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Foggy);
+    }
+    [ContextMenu("Change Weather to Hail")]
+    public void HailWeather()
+    {
+        weatherBackgroundManager.UpdateWeather(WeatherIconsManager.WeatherType.Hail);
+    }
+
+    [ContextMenu("Force Checkmate and Log Stats For Player 1")]
+    public void ForceCheckmatePlayer1()
+    {
+        if (shipboard == null || victoryManager == null)
+        {
+            Debug.LogError("Shipboard or VictoryManager reference is missing! Assign them in the Inspector.");
+            return;
+        }
+
+        // Calculate total game duration
+        float totalGameDuration = Time.time - shipboard.gameStartTime;
+        string formattedGameTime = shipboard.FormatGameTime(totalGameDuration);
+
+        // Calculate average move time for each player
+        string avgMoveTimeP1 = shipboard.GetAverageMoveTime(0); // Player 1 (Team 0)
+        string avgMoveTimeP2 = shipboard.GetAverageMoveTime(1); // Player 2 (Team 1)
+
+        // Log game statistics
+        Debug.Log($"[DEBUG] Forced Checkmate!");
+        Debug.Log($"[DEBUG] Total Game Time: {formattedGameTime}");
+        Debug.Log($"[DEBUG] Player 1 Avg. Move Time: {avgMoveTimeP1}");
+        Debug.Log($"[DEBUG] Player 2 Avg. Move Time: {avgMoveTimeP2}");
+
+        // Trigger checkmate for Player 1
+        victoryManager.Checkmate(0);
+        int totalPoints = shipboard.CalculateTotalPoints(0);
+        Debug.Log($"[DEBUG] Total Points: {totalPoints}");
+
+        Time.timeScale = 0f;
+    }
+
+    [ContextMenu("Force Checkmate and Log Stats For Player 2")]
+    public void ForceCheckmatePlayer2()
+    {
+        if (shipboard == null || victoryManager == null)
+        {
+            Debug.LogError("Shipboard or VictoryManager reference is missing! Assign them in the Inspector.");
+            return;
+        }
+
+        // Calculate total game duration
+        float totalGameDuration = Time.time - shipboard.gameStartTime;
+        string formattedGameTime = shipboard.FormatGameTime(totalGameDuration);
+
+        // Calculate average move time for each player
+        string avgMoveTimeP1 = shipboard.GetAverageMoveTime(0); // Player 1 (Team 0)
+        string avgMoveTimeP2 = shipboard.GetAverageMoveTime(1); // Player 2 (Team 1)
+
+        // Log game statistics
+        Debug.Log($"[DEBUG] Forced Checkmate!");
+        Debug.Log($"[DEBUG] Total Game Time: {formattedGameTime}");
+        Debug.Log($"[DEBUG] Player 1 Avg. Move Time: {avgMoveTimeP1}");
+        Debug.Log($"[DEBUG] Player 2 Avg. Move Time: {avgMoveTimeP2}");
+
+        // Trigger checkmate for Player 1
+        victoryManager.Checkmate(1);
+        int totalPoints = shipboard.CalculateTotalPoints(1);
+        Debug.Log($"[DEBUG] Total Points: {totalPoints}");
+
+        Time.timeScale = 0f;
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -43,6 +44,15 @@ public class ExpandableDeadShipController : MonoBehaviour
     private bool isPlayer1Turn;
     private bool isPlayer1Active = true; // Track which player's ship is active
 
+    public Image[] player1DeadShips;
+    public Image[] player2DeadShips;
+    public Sprite[] blackShips;
+    public Sprite[] silverShips;
+    public Sprite[] redShips;
+    public Sprite[] blueShips;
+
+    public Dictionary<ShipPieceType, Sprite> shipSprites;
+
     private void Start()
     {
         shipboard = FindObjectOfType<Shipboard>();
@@ -77,6 +87,7 @@ public class ExpandableDeadShipController : MonoBehaviour
 
             // Setup player buttons based on color and sprite
             SetUpPlayerButtons();
+            InitializeShipSprites();
         }
     }
 
@@ -267,5 +278,64 @@ public class ExpandableDeadShipController : MonoBehaviour
 
         // Activate the player's dead ship
         playerDeadShip.SetActive(true);
+    }
+
+    private void InitializeShipSprites()
+    {
+        shipSprites = new Dictionary<ShipPieceType, Sprite>
+    {
+        { ShipPieceType.RedAircraftCarrier, redShips[0] },
+        { ShipPieceType.RedDestroyer, redShips[1] },
+        { ShipPieceType.RedDestroyerASW, redShips[2] },
+        { ShipPieceType.RedDockyard, redShips[3] },
+        { ShipPieceType.RedFlagship, redShips[4] },
+        { ShipPieceType.RedLightCruiser, redShips[5] },
+        { ShipPieceType.RedSubmarine, redShips[6] },
+
+        { ShipPieceType.BlueAircraftCarrier, blueShips[0] },
+        { ShipPieceType.BlueDestroyer, blueShips[1] },
+        { ShipPieceType.BlueDestroyerASW, blueShips[2] },
+        { ShipPieceType.BlueDockyard, blueShips[3] },
+        { ShipPieceType.BlueFlagship, blueShips[4] },
+        { ShipPieceType.BlueLightCruiser, blueShips[5] },
+        { ShipPieceType.BlueSubmarine, blueShips[6] },
+
+        { ShipPieceType.SilverAircraftCarrier, silverShips[0] },
+        { ShipPieceType.SilverDestroyer, silverShips[1] },
+        { ShipPieceType.SilverDestroyerASW, silverShips[2] },
+        { ShipPieceType.SilverDockyard, silverShips[3] },
+        { ShipPieceType.SilverFlagship, silverShips[4] },
+        { ShipPieceType.SilverLightCruiser, silverShips[5] },
+        { ShipPieceType.SilverSubmarine, silverShips[6] },
+
+        { ShipPieceType.BlackAircraftCarrier, blackShips[0] },
+        { ShipPieceType.BlackDestroyer, blackShips[1] },
+        { ShipPieceType.BlackDestroyerASW, blackShips[2] },
+        { ShipPieceType.BlackDockyard, blackShips[3] },
+        { ShipPieceType.BlackFlagship, blackShips[4] },
+        { ShipPieceType.BlackLightCruiser, blackShips[5] },
+        { ShipPieceType.BlackSubmarine, blackShips[6] },
+    };
+    }
+
+    public void UpdateDeadShipUI(ShipPieces capturedShip, bool isPlayer1)
+    {
+        // Determine which player's dead ship images to update
+        Image[] deadShipImages = isPlayer1 ? player1DeadShips : player2DeadShips;
+
+        // Loop through and find the first empty slot
+        foreach (var image in deadShipImages)
+        {
+            if (image.sprite == null) // Empty slot
+            {
+                // Assign the sprite for the captured ship
+                if (shipSprites.TryGetValue(capturedShip.type, out Sprite sprite))
+                {
+                    image.sprite = sprite;
+                    image.gameObject.SetActive(true);
+                }
+                break;
+            }
+        }
     }
 }

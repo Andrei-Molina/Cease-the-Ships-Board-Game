@@ -38,7 +38,9 @@ public class UIManager : MonoBehaviour
     private HologramManager hologramManager;
     private ColorController colorController;
     private HandicapController handicapController;
+    private ErrorScreenManager errorScreenManager;
     public AvatarScreenController avatarScreenController;
+
 
     public Button[] DifficultyButtons;
     private int selectedDifficultyIndex = -1; // Track selected difficulty button index
@@ -58,6 +60,7 @@ public class UIManager : MonoBehaviour
         colorController = FindObjectOfType<ColorController>();
         handicapController = FindObjectOfType<HandicapController>();
         avatarScreenController = FindObjectOfType<AvatarScreenController>();
+        errorScreenManager = FindObjectOfType<ErrorScreenManager>();
     }
 
     private void Start()
@@ -92,8 +95,19 @@ public class UIManager : MonoBehaviour
     {
         ClearUI();
         GameManager.instance.AI = false;
+        selectedDifficultyIndex = -1;
+        GameManager.instance.AI = false;
+        GameManager.instance.player1Avatar = null;
+        GameManager.instance.player2Avatar = null;
+        GameManager.instance.player1Handicap = null;
+        GameManager.instance.player2Handicap = null;
+        colorController.ResetAllColorButtonsInteractability();
+        handicapController.ResetPlayer1HandicapButtons();
+        handicapController.ResetPlayer2HandicapButtons();
+        avatarScreenController.ResetPlayer1Values();
+        avatarScreenController.ResetPlayer2Values();
+        hologramManager.ResetHologramStates(); // Reset hologram states
         battleModeScreen.SetActive(true);
-
         SetDifficultyButtonsInteractableToTrue();
     }
 
@@ -128,12 +142,44 @@ public class UIManager : MonoBehaviour
     }
     public void Player1HandicapScreen()
     {
+        if (GameManager.instance.player1Avatar == null)
+        {
+            errorScreenManager.ShowErrorScreen(0);
+            return;
+        }
+
+        // Refresh the player name and trim leading/trailing spaces
+        GameManager.instance.player1Name = GameManager.instance.player1Name?.Trim();
+
+        string playerName = GameManager.instance.player1Name;
+
+        // Check if the name is null, empty, or only whitespace
+        if (string.IsNullOrWhiteSpace(playerName))
+        {
+            errorScreenManager.ShowErrorScreen(1); // No name entered
+            return;
+        }
+
+        // Check if there's additional text (the actual name) after the prefix
+        string nameAfterPrefix = playerName.Substring(playerName.IndexOf('.') + 1).Trim();
+        if (string.IsNullOrWhiteSpace(nameAfterPrefix))
+        {
+            errorScreenManager.ShowErrorScreen(1); // No valid name after prefix
+            return;
+        }
+
         ClearUI();
         playerVsPlayerScreen.SetActive(true);
         p1HandicapScreen.SetActive(true);
     }
     public void Player1ColorScreen()
     {
+        if (GameManager.instance.player1Handicap == null)
+        {
+            errorScreenManager.ShowErrorScreen(2);
+            return;
+        }
+
         if (GameManager.instance.player1Handicap != null)
         {
             Debug.Log(GameManager.instance.player1Handicap);
@@ -153,17 +199,47 @@ public class UIManager : MonoBehaviour
         }
         else
         {
+            errorScreenManager.ShowErrorScreen(3);
             Debug.Log("No Color Selected for Player 1");
         }
     }
     public void Player2HandicapScreen()
     {
+        if (GameManager.instance.player2Avatar == null)
+        {
+            errorScreenManager.ShowErrorScreen(0);
+            return;
+        }
+
+        string playerName = GameManager.instance.player2Name?.Trim();
+
+        // Check if the name is null, empty, or only whitespace
+        if (string.IsNullOrWhiteSpace(playerName))
+        {
+            errorScreenManager.ShowErrorScreen(1); // No name entered
+            return;
+        }
+
+        // Check if there's additional text (the actual name) after the prefix
+        string nameAfterPrefix = playerName.Substring(playerName.IndexOf('.') + 1).Trim();
+        if (string.IsNullOrWhiteSpace(nameAfterPrefix))
+        {
+            errorScreenManager.ShowErrorScreen(1); // No valid name after prefix
+            return;
+        }
+
         ClearUI();
         playerVsPlayerScreen.SetActive(true);
         p2HandicapScreen.SetActive(true);
     }
     public void Player2ColorScreen()
     {
+        if (GameManager.instance.player2Handicap == null)
+        {
+            errorScreenManager.ShowErrorScreen(2);
+            return;
+        }
+
         if (GameManager.instance.player2Handicap != null)
         {
             ClearUI();
@@ -181,6 +257,7 @@ public class UIManager : MonoBehaviour
         }
         else
         {
+            errorScreenManager.ShowErrorScreen(3);
             Debug.Log("No Color Selected for Player 2");
         }
     }
@@ -250,6 +327,12 @@ public class UIManager : MonoBehaviour
     // Method called when deploy button is clicked
     public void DeployAIButtonClicked()
     {
+        if (selectedDifficultyIndex == -1)
+        {
+            errorScreenManager.ShowErrorScreen(5);
+            return;
+        }
+
         if (selectedDifficultyIndex == 0) // Easy
         {
             EasyDifficultyScreen();
@@ -279,6 +362,8 @@ public class UIManager : MonoBehaviour
         }
         else if (!GameManager.instance.AI)
         {
+            GameManager.instance.player1Avatar = null;
+            GameManager.instance.player1Name = "";
             BattleModeScreen();
         }
     }

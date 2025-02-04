@@ -7,6 +7,7 @@ public class ToggleCalamities : MonoBehaviour
 {
     [SerializeField] private GameObject waterspoutCenter;
     [SerializeField] private GameObject whirlpoolCenter;
+    [SerializeField] private GameObject shipwreckCenter;
     [SerializeField] private Button toggleButton;
     [SerializeField] private Sprite[] toggleIcons;
 
@@ -55,6 +56,11 @@ public class ToggleCalamities : MonoBehaviour
     public void SetWhirlpoolCenter (GameObject whirlpool)
     {
         whirlpoolCenter = whirlpool;
+    }
+
+    public void SetShipwreckCenter (GameObject shipwreck)
+    {
+        shipwreckCenter = shipwreck;
     }
 
     private void UpdateButtonIcon()

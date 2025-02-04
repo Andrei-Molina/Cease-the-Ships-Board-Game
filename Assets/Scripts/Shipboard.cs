@@ -46,6 +46,8 @@ public class Shipboard : MonoBehaviour
     private static int player1_SP = 0;
     private static int player2_SP = 0;
 
+    private bool calamityHandled = false;
+
     //Camera Related
     private Camera currentCamera;
     private Vector3 player1CameraLandscapePosition = new Vector3(-0.140000001f, 4.11000013f, -3.74000001f);
@@ -109,6 +111,7 @@ public class Shipboard : MonoBehaviour
     public ToggleCalamities toggleCalamities;
     public AvatarButtonsManager avatarButtonsManager;
     public AvatarScreenController avatarScreenController;
+    public ExpandableDeadShipController expandableDeadShipController;
 
     private bool isPlayer1Turn;
 
@@ -156,7 +159,7 @@ public class Shipboard : MonoBehaviour
     private int[] whirlpoolValidXCoordinates = { 0, 1, 2, 3 }; // Whirlpool valid x-coordinates
     private int[] whirlpoolValidYCoordinates = { 2, 3 };       // Whirlpool valid y-coordinates
     private HashSet<Vector2Int> whirlpoolCenterPosition = new HashSet<Vector2Int>();
-    private const int WHIRLPOOL_GRID_SIZE = 3; // Size of the Waterspout grid
+    private const int WHIRLPOOL_GRID_SIZE = 3; // Size of the whirlpool grid
 
     //Reef
     private HashSet<Vector2Int> reefPositions = new HashSet<Vector2Int>();
@@ -175,16 +178,16 @@ public class Shipboard : MonoBehaviour
         Quaternion.Euler(0, 270, 0)      // TreacherousCurrent-Down
     };
     // Define the valid ranges for x and y coordinates
-    private int[] treacherousCurrentValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
-    private int treacherousCurrentMinY = 2; // Reef minimum y-coordinate
-    private int treacherousCurrentMaxY = 5; // Reef maximum y-coordinate
+    private int[] treacherousCurrentValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // treacherous current valid x-coordinates
+    private int treacherousCurrentMinY = 2; // treacherous current minimum y-coordinate
+    private int treacherousCurrentMaxY = 5; // treacherous current maximum y-coordinate
 
     //Pirate Hideout
     private HashSet<Vector2Int> pirateHideoutPositions = new HashSet<Vector2Int>();
     // Define the valid ranges for x and y coordinates
-    private int[] pirateHideoutValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // Reef valid x-coordinates
-    private int pirateHideoutMinY = 2; // Reef minimum y-coordinate
-    private int pirateHideoutMaxY = 5; // Reef maximum y-coordinate
+    private int[] pirateHideoutValidXCoordinates = { 0, 1, 2, 3, 4, 5 }; // pirate hideout valid x-coordinates
+    private int pirateHideoutMinY = 2; // pirate hideout minimum y-coordinate
+    private int pirateHideoutMaxY = 5; // pirate hideout maximum y-coordinate
 
     //Waterspout
     private Vector2Int waterspoutPosition = new Vector2Int(-1, -1); // Position of the whirlpool on the board
@@ -204,6 +207,7 @@ public class Shipboard : MonoBehaviour
     private List<GameObject> activeReefs = new List<GameObject>();
     private List<GameObject> activeTreacherousCurrents = new List<GameObject>();
     private List<GameObject> activePirateHideouts = new List<GameObject>();
+    private List<GameObject> activeShipwreck = new List<GameObject>();
 
     //Alembic Timeline
     public PlayableDirector alembicPlayableDirector; // Reference to the PlayableDirector
@@ -217,6 +221,25 @@ public class Shipboard : MonoBehaviour
     private int currentAILevel;
 
     public ShipboardSceneManager shipboardSceneManager;
+    public ShipwreckAreaSpawner shipwreckAreaSpawner;
+    public SeaMineSpawner seaMineSpawner;
+    public TsunamiSpawner tsunamiSpawner;
+    public GhostShipSpawner ghostShipSpawner;
+    public UnderwaterVolcanoSpawner underwaterVolcanoSpawner;
+
+
+    private bool spawnedLava = false;
+    private bool shownVolcanoCountdown = false;
+    public Destroyer destroyer;
+
+    // Store the time when a player's turn starts
+    private Dictionary<int, float> playerTurnStartTime = new Dictionary<int, float>();
+
+    // Store total move time and move count per player
+    private Dictionary<int, float> playerTotalMoveTime = new Dictionary<int, float>();
+    private Dictionary<int, int> playerMoveCount = new Dictionary<int, int>();
+    public float gameStartTime = 0f;
+
 
     private void Start()
     {
@@ -226,6 +249,13 @@ public class Shipboard : MonoBehaviour
         GameModeManager modeManager = FindObjectOfType<GameModeManager>();
         ColorController colorController = FindObjectOfType<ColorController>();
         avatarScreenController = FindObjectOfType<AvatarScreenController>();
+        expandableDeadShipController = FindObjectOfType<ExpandableDeadShipController>();
+        shipwreckAreaSpawner = FindObjectOfType<ShipwreckAreaSpawner>();
+        seaMineSpawner = FindObjectOfType<SeaMineSpawner>();
+        tsunamiSpawner = FindObjectOfType<TsunamiSpawner>();
+        ghostShipSpawner = FindObjectOfType<GhostShipSpawner>();
+        underwaterVolcanoSpawner = FindObjectOfType<UnderwaterVolcanoSpawner>();
+        destroyer = FindObjectOfType<Destroyer>();
 
         UIManager.instance.avatarScreenController.ChangeAvatarIfAI();
 
@@ -394,8 +424,73 @@ public class Shipboard : MonoBehaviour
 
         return tileObject;
     }
+    private void HandleStandbyPhase()
+    {
+        StartTurn(); // Start move timer
+
+        // Reset shown countdown flag at the start of each phase
+        shownVolcanoCountdown = false;
+
+        if (underwaterVolcanoSpawner.activeUnderwaterVolcano.Count > 0)
+        {
+            // Check if any underwater volcano has existed for 3 turns
+            foreach (var volcano in underwaterVolcanoSpawner.underwaterVolcanoSpawnTurns)
+            {
+                Vector2Int position = volcano.Key;
+                int spawnTurn = volcano.Value;
+
+                int turnsUntilEruption = 3 - (GameManager.instance.turns - spawnTurn);
+
+                if (!shownVolcanoCountdown && turnsUntilEruption > 0 && turnsUntilEruption <= 3)
+                {
+                    // Show the countdown UI for this volcano
+                    VolcanoCountdownUI countdownUI = FindObjectOfType<VolcanoCountdownUI>();
+                    countdownUI.ShowVolcanoCountdown(turnsUntilEruption);
+                    shownVolcanoCountdown = true;
+                }
+
+                if (!spawnedLava && GameManager.instance.turns - spawnTurn == 3) // 3 turns have passed
+                {
+                    underwaterVolcanoSpawner.SpewLava(position); // Spew lava
+                    spawnedLava = true;
+                }
+            }
+
+            // Check for sixth turn
+            if (!calamityHandled && GameManager.instance.turns != 0 && GameManager.instance.turns % 6 == 0)
+            {
+                HandleCalamitySpawn();
+                calamityHandled = true;
+            }
+
+            //Reset the flag
+            if (GameManager.instance.turns % 6 != 0 || GameManager.instance.turns == 0)
+            {
+                calamityHandled = false;
+            }
+        }
+
+        else
+        {
+            // Check for third turn.
+            if (!calamityHandled && GameManager.instance.turns != 0 && GameManager.instance.turns % 3 == 0)
+            {
+                HandleCalamitySpawn();
+                calamityHandled = true;
+            }
+
+            //Reset the flag
+            if (GameManager.instance.turns % 3 != 0 || GameManager.instance.turns == 0)
+            {
+                calamityHandled = false;
+            }
+        }
+    }
     private void HandleMainPhase()
     {
+        if (!GameManager.instance.enableGameInteraction)
+            return; // Skip if interaction is disabled
+
         // Only allow selecting ships and showing their names; no dragging or movement.
         RaycastHit info;
         Ray ray = currentCamera.ScreenPointToRay(Input.mousePosition);
@@ -408,9 +503,17 @@ public class Shipboard : MonoBehaviour
                 var ship = shipboardPieces[hitPosition.x, hitPosition.y];
                 if (ship != null)
                 {
+                    // Skip selection if the ship has the Out of Commission debuff
+                    if (ship.isOutOfCommission)
+                    {
+                        Debug.Log($"Cannot select {ship.name}: Out of Commission.");
+                        return;
+                    }
+
                     Debug.Log($"Ship selected: {ship.name}");
                     // In this phase, we do not allow dragging
                     // Add skill usage here when implemented
+                    FindObjectOfType<SkillManager>().ShowSkills(ship);
                 }
             }
         }
@@ -452,10 +555,25 @@ public class Shipboard : MonoBehaviour
             {
                 if (shipboardPieces[hitPosition.x, hitPosition.y] != null)
                 {
+                    if (shipboardPieces[hitPosition.x, hitPosition.y].isOutOfCommission)
+                    {
+                        Debug.Log($"Cannot select {shipboardPieces[hitPosition.x, hitPosition.y].name}: Out of Commission.");
+                        return;
+                    }
+
                     if ((shipboardPieces[hitPosition.x, hitPosition.y].team == 0 && isPlayer1Turn) || (shipboardPieces[hitPosition.x, hitPosition.y].team == 1 && !isPlayer1Turn))
                     {
                         currentlyDragging = shipboardPieces[hitPosition.x, hitPosition.y];
                         availableMoves = currentlyDragging.GetAvailableMoves(ref shipboardPieces, TILE_COUNT_X, TILE_COUNT_Y);
+                        Debug.Log($"Available Moves before filter for {currentlyDragging.type}: {string.Join(", ", availableMoves.Select(move => $"({move.x}, {move.y})"))}");
+
+                        // Filter out tiles affected by smoke for enemy ships
+                        availableMoves = availableMoves
+                            .Where(move => !Destroyer.smokeTiles.Contains(move) ||
+                                           shipboardPieces[move.x, move.y]?.team == currentlyDragging.team)
+                            .ToList();
+
+                        Debug.Log($"Available Moves after filter for {currentlyDragging.type}: {string.Join(", ", availableMoves.Select(move => $"({move.x}, {move.y})"))}");
 
                         PreventCheck();
                         HighlightTiles();
@@ -467,10 +585,35 @@ public class Shipboard : MonoBehaviour
             if (currentlyDragging != null && Input.GetMouseButtonUp(0))
             {
                 Vector2Int previousPosition = new Vector2Int(currentlyDragging.currentX, currentlyDragging.currentY);
+
+                // Frightened debuff logic
+                if (currentlyDragging.isFrightened)
+                {
+                    Debug.Log($"Frightened Debuff Active for {currentlyDragging.type}. Calculating unintended move...");
+                    if (UnityEngine.Random.value < 0.5f)
+                    {
+                        // Random unintended move
+                        List<Vector2Int> validMoves = availableMoves.ToList(); // availableMoves contains valid moves, put it in a list
+                        validMoves.Remove(hitPosition); // Exclude the intended move
+                        if (validMoves.Count > 0)
+                        {
+                            hitPosition = validMoves[UnityEngine.Random.Range(0, validMoves.Count)];
+                            Debug.Log($"Frightened {currentlyDragging.type} chooses an unintended move to {hitPosition}.");
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"Frightened {currentlyDragging.type} chooses to follow the intended move to {hitPosition}.");
+                    }
+                }
+
                 bool validMove = MoveTo(currentlyDragging, hitPosition.x, hitPosition.y);
 
                 if (!validMove)
+                {
+                    Debug.Log($"Invalid move for {currentlyDragging.type}. Reverting to original position.");
                     currentlyDragging.SetPosition(GetTileCenter(previousPosition.x, previousPosition.y));
+                }
 
                 currentlyDragging = null;
                 RemoveHighlightTiles();
@@ -503,6 +646,7 @@ public class Shipboard : MonoBehaviour
 
     private void HandleEndPhase()
     {
+        EndTurn();
         // Handle Whirlpool movement at the end of the turn
         if (turnEnded)
         {
@@ -549,6 +693,7 @@ public class Shipboard : MonoBehaviour
         {
             bool buttonsVisible = avatarButtonsManager.GetPlayer2ButtonsVisible();
             avatarButtonsManager.TogglePlayer2Public(ref buttonsVisible);
+            GameManager.instance.turns++;
         }
         else if (!isPlayer1Turn)
         {
@@ -556,7 +701,60 @@ public class Shipboard : MonoBehaviour
             avatarButtonsManager.TogglePlayer1Public(ref buttonsVisible);
         }
 
+        if (tsunamiSpawner.activeTsunami.Count > 0) // Check if there is an active tsunami.
+        {
+            tsunamiSpawner.MoveTsunami(); // Move the tsunami after the player's turn.
+        }
+
+        if (underwaterVolcanoSpawner.lavaPositions.Count > 0) // Check if there is an active lava
+        {
+            underwaterVolcanoSpawner.MoveAllLava(); // Move the lava after the player's turn
+        }
+
+        int currentTurn = GameManager.instance.turns;
+
+        for (int x = 0; x < TILE_COUNT_X; x++)
+        {
+            for (int y = 0; y < TILE_COUNT_Y; y++)
+            {
+                ShipPieces ship = shipboardPieces[x, y];
+                if (ship != null)
+                {
+                    ship.CheckAndClearDebuff(currentTurn);
+                }
+            }
+        }
+
+        // Check for smoke expiry for the current player
+        foreach (var destroyer in FindObjectsOfType<Destroyer>())
+        {
+            destroyer.CheckForSmokeExpiry();
+        }
+
+        
+        // Check for depth charge expiry for the current player
+        foreach (var destroyerASW in FindObjectsOfType<DestroyerASW>())
+        {
+            destroyerASW.CheckForRevealedDebuffExpiry();
+        }
+
+        foreach (var lightCruiser in FindObjectsOfType<LightCruiser>())
+        {
+            lightCruiser.CheckForBurnDebuffExpiry();
+        }
+
+        // Proceed to the next turn
+        if (isPlayer1Turn)
+        {
+            GameManager.instance.player1Turn++;
+        }
+        else
+        {
+            GameManager.instance.player2Turn++;
+        }
+
         currentPhase = GamePhase.StandbyPhase;
+        shownVolcanoCountdown = false;
 
         UpdatePhaseUI(); // Update UI after phase change
         StartCoroutine(AnimatePhaseIndicators());
@@ -727,9 +925,12 @@ public class Shipboard : MonoBehaviour
 
     private void LogPhaseChange(string phaseText)
     {
+        string logEntry = $"Phase Changed to: {phaseText}";
+
         // Append the phase change to the log
         logText += $"\nPhase Changed to: {phaseText} \n";
         listOfLogs.text = logText; // Update the on-screen log text
+        victoryManager.AddLog(logEntry); // Store in log list
     }
 
     // Show the phase selection UI and make buttons interactable based on the phase
@@ -858,13 +1059,75 @@ public class Shipboard : MonoBehaviour
         yield return new WaitForSeconds(delay);
     }
 
+    // Call this when a new turn starts (StandbyPhase)
+    public void StartTurn()
+    {
+        int currentTeam = isPlayer1Turn ? 0 : 1;
+
+        if (!GameManager.instance.AI)
+        {
+            // Set game start time only once at the first turn
+            if (gameStartTime == 0f)
+            {
+                gameStartTime = Time.time;
+                Debug.Log("Game started. Timer initialized.");
+            }
+
+            playerTurnStartTime[currentTeam] = Time.time; // Start the timer
+            Debug.Log($"Player {currentTeam + 1} turn started. Timer started.");
+        }
+    }
+
+    public void EndTurn()
+    {
+        int currentTeam = isPlayer1Turn ? 0 : 1;
+
+        if (!GameManager.instance.AI && playerTurnStartTime.ContainsKey(currentTeam))
+        {
+            float moveEndTime = Time.time;
+            float moveDuration = moveEndTime - playerTurnStartTime[currentTeam];
+
+            playerTurnStartTime.Remove(currentTeam); // Reset for the next turn
+
+            Debug.Log($"Player {currentTeam + 1} turn ended. Time logged: {moveDuration} sec.");
+
+            if (moveDuration > 0.1f) // Prevent near-zero values
+            {
+                TrackPlayerMoveTime(currentTeam, moveDuration); 
+            }
+        }
+    }
+
+
+    private void TrackPlayerMoveTime(int team, float moveDuration)
+    {
+        if (!GameManager.instance.AI)
+        {
+            if (!playerTotalMoveTime.ContainsKey(team))
+            {
+                playerTotalMoveTime[team] = 0f;
+                playerMoveCount[team] = 0;
+            }
+
+            playerTotalMoveTime[team] += moveDuration;
+            playerMoveCount[team]++;
+
+            Debug.Log($"Player {team + 1} Avg. Move Time: {FormatMoveTime(playerTotalMoveTime[team] / playerMoveCount[team])}");
+        }
+    }
+
     private void Update()
     {
+        if (Time.timeScale == 0f)
+            return;
+
         if (!currentCamera)
         {
             currentCamera = Camera.main;
             return;
         }
+
+        int currentTeam = isPlayer1Turn ? 0 : 1;
 
         // Check for phase transitions
         if (currentPhase == GamePhase.StandbyPhase && phaseTransitionCoroutine == null)
@@ -874,13 +1137,7 @@ public class Shipboard : MonoBehaviour
 
         if (currentPhase == GamePhase.StandbyPhase)
         {
-            // Check for Player 2's third turn
-            if (turnCounter == 6 && (isPlayer1Turn && turnCounter % 6 == 0) || (aiController.totalTurnsPlayed == 3 && (isPlayer1Turn && aiController.totalTurnsPlayed % 3 == 0))) // 6 because each player has to do 3 turns before calamity has a chance of respawning/despawning
-            {
-                turnCounter = 0;
-                aiController.totalTurnsPlayed = 0;
-                HandleCalamitySpawn();
-            }
+            HandleStandbyPhase();
         }
 
         if (currentPhase == GamePhase.MainPhase1)
@@ -918,6 +1175,23 @@ public class Shipboard : MonoBehaviour
         {
             HandleCameraTransition();
         }
+    }
+
+    private string FormatMoveTime(float seconds)
+    {
+        if (seconds < 60)
+            return $"{Mathf.Round(seconds)} sec";
+        else
+            return $"{Mathf.Round(seconds / 60)} min";
+    }
+
+    public string FormatGameTime(float seconds)
+    {
+        float minutes = seconds / 60;
+        if (minutes < 60)
+            return $"{Mathf.Round(minutes)} min";
+        else
+            return $"{Mathf.Round(minutes / 60)} hr";
     }
 
     private Vector2Int LookupTileIndex(GameObject hitInfo)
@@ -1089,6 +1363,12 @@ public class Shipboard : MonoBehaviour
     {
         Vector2Int targetPosition = new Vector2Int(x, y);
         bool isPirateHideout = pirateHideoutPositions.Contains(targetPosition);
+        bool isShipwreckArea = shipwreckAreaSpawner.shipwreckPositions.Contains(targetPosition);
+        bool isSeaMine = seaMineSpawner.seaMinePositions.Contains(targetPosition);
+        bool isTsunami = tsunamiSpawner.tsunamiPositions.Contains(targetPosition);
+        bool isGhostShip = ghostShipSpawner.ghostShipPositions.Contains(targetPosition);
+        bool isUnderwaterVolcano = underwaterVolcanoSpawner.underwaterVolcanoPositions.Contains(targetPosition);
+        bool isLava = underwaterVolcanoSpawner.lavaPositions.Contains(targetPosition);
 
         if (reefPositions.Contains(targetPosition))
         {
@@ -1105,6 +1385,12 @@ public class Shipboard : MonoBehaviour
         if (waterspoutCenterPosition.Contains(targetPosition))
         {
             Debug.Log($"Move to {targetPosition} failed: Waterspout present.");
+            return false;
+        }
+
+        if (isUnderwaterVolcano)
+        {
+            Debug.Log($"Move to {targetPosition} failed: Underwater Volcano present.");
             return false;
         }
 
@@ -1130,6 +1416,13 @@ public class Shipboard : MonoBehaviour
         {
             ShipPieces osp = shipboardPieces[x, y];
 
+            // Prevent capture if the target ship is Out of Commission
+            if (osp.isOutOfCommission && osp.IsDebuffFromSource("Tsunami"))
+            {
+                Debug.Log($"Move failed: Cannot capture {osp.name} because it is Out of Commission.");
+                return false;
+            }
+
             if (sp.team == osp.team)
                 return false;
 
@@ -1138,27 +1431,48 @@ public class Shipboard : MonoBehaviour
                 string logEntry = $"Player {sp.team + 1} {sp.type} sinks Player {osp.team + 1} {osp.type} in {targetPosString}";
                 logText += logEntry + "\n"; // Append to the logText
                 Debug.Log(logEntry);
+                victoryManager.AddLog(logEntry);
             }
 
             //If it's the enemy team
             if (osp.team == 0)
             {
+                GameManager.instance.player2SkillPoints += osp.pieceValue;
+                Debug.Log($"Player 2 gained {osp.pieceValue} skill points");
+
                 if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
                 osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                {
+                    float totalGameDuration = Time.time - gameStartTime;
+                    Debug.Log($"Total Game Time: {FormatGameTime(totalGameDuration)}");
                     victoryManager.Checkmate(1);
+                    int totalPoints = CalculateTotalPoints(1);
+                }   
 
                 deadPlayer1.Add(osp);
                 osp.gameObject.SetActive(false);
+
+                expandableDeadShipController.UpdateDeadShipUI(osp, true);
             }
 
             else
             {
+                GameManager.instance.player1SkillPoints += osp.pieceValue;
+                Debug.Log($"Player 1 gained {osp.pieceValue} skill points");
+
                 if ((osp.type == ShipPieceType.RedFlagship || osp.type == ShipPieceType.BlueFlagship ||
                     osp.type == ShipPieceType.BlackFlagship || osp.type == ShipPieceType.SilverFlagship))
+                {
+                    float totalGameDuration = Time.time - gameStartTime;
+                    Debug.Log($"Total Game Time: {FormatGameTime(totalGameDuration)}");
                     victoryManager.Checkmate(0);
+                    int totalPoints = CalculateTotalPoints(0);
+                }
+                    
 
                 deadPlayer2.Add(osp);
                 osp.gameObject.SetActive(false);
+                expandableDeadShipController.UpdateDeadShipUI(osp, false);
             }
         }
         // Log the move action
@@ -1167,6 +1481,7 @@ public class Shipboard : MonoBehaviour
             string moveLogEntry = $"Player {sp.team + 1} {sp.type} moved to {targetPosString}";
             logText += moveLogEntry + "\n"; // Append to the logText
             Debug.Log(moveLogEntry);
+            victoryManager.AddLog(moveLogEntry);
         }
 
         listOfLogs.text = logText;
@@ -1177,6 +1492,38 @@ public class Shipboard : MonoBehaviour
         PositionSinglePiece(x, y);
 
         moveList.Add(new Vector2Int[] { previousPosition, new Vector2Int(x, y) });
+
+        // Check if the target position is a shipwreck area
+        if (isShipwreckArea && !sp.isOutOfCommission)
+        {
+            sp.ApplyOutOfCommissionDebuff("Shipwreck");
+        }
+
+        if (isSeaMine && !sp.isOutOfCommission)
+        {
+            sp.ApplyOutOfCommissionDebuff(GameManager.instance.turns, "SeaMine");
+            ClearCalamities();
+        }
+
+        if (isTsunami && !sp.isOutOfCommission)
+        {
+            sp.ApplyOutOfCommissionDebuff(GameManager.instance.turns, "Tsunami");
+        }
+
+        if (isGhostShip)
+        {
+            sp.ApplyFrightenedDebuff("Ghost Ship");
+        }
+
+        if (!isGhostShip)
+        {
+            sp.RemoveFrightenedDebuff();
+        }
+
+        if (isLava)
+        {
+            sp.ApplyOutOfCommissionDebuff(GameManager.instance.turns, "Lava");
+        }
 
         // Check if there's a checkmate, and if not, proceed
         if (CheckForCheckMate() != 1 && CheckForCheckMate() != 2)
@@ -1253,6 +1600,8 @@ public class Shipboard : MonoBehaviour
     {
         Vector2Int targetPosition = new Vector2Int(x, y);
         bool isPirateHideout = pirateHideoutPositions.Contains(targetPosition);
+        bool isShipwreckArea = shipwreckAreaSpawner.shipwreckPositions.Contains(targetPosition); // Check if position is in shipwreck area
+        bool isSeaMine = seaMineSpawner.seaMinePositions.Contains(targetPosition);
 
         if (reefPositions.Contains(targetPosition))
         {
@@ -1300,6 +1649,7 @@ public class Shipboard : MonoBehaviour
 
                 deadPlayer1.Add(osp);
                 osp.gameObject.SetActive(false);
+                expandableDeadShipController.UpdateDeadShipUI(osp, true);
             }
 
             else
@@ -1310,6 +1660,7 @@ public class Shipboard : MonoBehaviour
 
                 deadPlayer2.Add(osp);
                 osp.gameObject.SetActive(false);
+                expandableDeadShipController.UpdateDeadShipUI(osp, false);
             }
         }
 
@@ -1319,6 +1670,18 @@ public class Shipboard : MonoBehaviour
         PositionSinglePiece(x, y);
 
         moveList.Add(new Vector2Int[] { previousPosition, new Vector2Int(x, y) });
+
+        // Check if the target position is a shipwreck area
+        if (isShipwreckArea && !sp.isOutOfCommission)
+        {
+            sp.ApplyOutOfCommissionDebuff("Shipwreck");
+        }
+
+        if (isSeaMine && !sp.isOutOfCommission)
+        {
+            sp.ApplyOutOfCommissionDebuff(GameManager.instance.turns, "SeaMine");
+            ClearCalamities();
+        }
 
         // Check if there's a checkmate, and if not, proceed
         if (CheckForCheckMate() != 1 && CheckForCheckMate() != 2)
@@ -1360,9 +1723,9 @@ public class Shipboard : MonoBehaviour
             Vector2Int tilePosition = new Vector2Int(availableMoves[i].x, availableMoves[i].y);
 
             // Check if the position is restricted by a reef, whirlpool, or waterspout
-            if (reefPositions.Contains(tilePosition) || whirlpoolCenterPosition.Contains(tilePosition) || waterspoutCenterPosition.Contains(tilePosition))
+            if (reefPositions.Contains(tilePosition) || whirlpoolCenterPosition.Contains(tilePosition) || waterspoutCenterPosition.Contains(tilePosition) || underwaterVolcanoSpawner.underwaterVolcanoPositions.Contains(tilePosition))
             {
-                continue; // Skip this tile if it contains a reef, whirlpool, or waterspout
+                continue; // Skip this tile if it contains a reef, whirlpool, waterspout, or underwater volcano
             }
 
             tiles[availableMoves[i].x, availableMoves[i].y].layer = LayerMask.NameToLayer("Highlight");
@@ -2495,8 +2858,9 @@ public class Shipboard : MonoBehaviour
     private void SpawnRandomCalamity()
     {
         // Randomly decide to spawn either a reef (0) or a whirlpool (1)
-        int calamityType = mt.Next(5); // Generates 0, 1, 2, 3, 4
-        
+        int calamityType = mt.Next(10); // Generates 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+        Vector2Int spawnedVolcanoPosition = new Vector2Int();
+
         if (calamityType == 0)
         {
             SpawnRandomReef(); // Spawn a reef
@@ -2517,11 +2881,47 @@ public class Shipboard : MonoBehaviour
             SpawnRandomPirateHideout();
             Debug.Log("Spawn Random Pirate Hideout");
         }
-        else
+        else if (calamityType == 4)
+        {
+            ghostShipSpawner.SpawnRandomGhostShip();
+            Debug.Log("Spawn Random Ghost Ship");
+        }
+        else if (calamityType == 5)
+        {
+            seaMineSpawner.SpawnRandomSeaMine();
+            Debug.Log("Spawn Random Sea Mine");
+        }
+        else if (calamityType == 6)
+        {
+            shipwreckAreaSpawner.SpawnRandomShipwreckArea();
+            Debug.Log("Spawn Random Shipwreck Area");
+        }
+        else if (calamityType == 7)
+        {
+            tsunamiSpawner.SpawnRandomTsunami();
+            Debug.Log("Spawn Random Tsunami");
+        }
+        else if (calamityType == 8)
         {
             SpawnRandomWhirlpool();
             Debug.Log("Spawn Random Whirlpool");
+        }
+        else
+        {
+            underwaterVolcanoSpawner.SpawnRandomUnderwaterVolcano();
+            spawnedVolcanoPosition = underwaterVolcanoSpawner.GetLastSpawnedUnderwaterVolcanoPosition();
+            Debug.Log("Spawn Random Underwater Volcano");
+        }
 
+        // Set spawn turn and show countdown UI
+        if (spawnedVolcanoPosition != null)
+        {
+            underwaterVolcanoSpawner.underwaterVolcanoSpawnTurns[spawnedVolcanoPosition] = GameManager.instance.turns;
+
+            // Show countdown immediately
+            VolcanoCountdownUI countdownUI = FindObjectOfType<VolcanoCountdownUI>();
+            countdownUI.ShowVolcanoCountdown(3); // Always starts with 3 turns until eruption
+            shownVolcanoCountdown = true;
         }
     }
     private void ClearCalamities()
@@ -2566,6 +2966,66 @@ public class Shipboard : MonoBehaviour
         }
         activePirateHideouts.Clear(); // Clear the reef object list.
         pirateHideoutPositions.Clear(); // Clear the reef tile positions data.
+
+        foreach (GameObject shipwreckArea in shipwreckAreaSpawner.activeShipwreck)
+        {
+            Destroy(shipwreckArea);
+        }
+
+        shipwreckAreaSpawner.activeShipwreck.Clear();
+        shipwreckAreaSpawner.shipwreckPositions.Clear();
+        shipwreckAreaSpawner.shipwreckTiles.Clear();
+
+        // Reset OutOfCommission debuff only for ships affected by a shipwreck or frightened debuff
+        for (int x = 0; x < TILE_COUNT_X; x++)
+        {
+            for (int y = 0; y < TILE_COUNT_Y; y++)
+            {
+                ShipPieces ship = shipboardPieces[x, y];
+                if (ship != null && ship.IsDebuffFromSource("Shipwreck"))
+                {
+                    ship.RemoveOutOfCommissionDebuff();
+                }
+
+                if (ship != null && ship.isFrightened)
+                {
+                    ship.RemoveFrightenedDebuff();
+                }
+            }
+        }
+
+        foreach (GameObject seaMines in seaMineSpawner.activeSeaMine)
+        {
+            Destroy(seaMines);
+        }
+
+        seaMineSpawner.activeSeaMine.Clear();
+        seaMineSpawner.seaMinePositions.Clear();
+
+        foreach (GameObject tsunami in tsunamiSpawner.activeTsunami)
+        {
+            Destroy(tsunami);
+        }
+
+        tsunamiSpawner.activeTsunami.Clear();
+        tsunamiSpawner.tsunamiPositions.Clear();
+
+        foreach (GameObject ghostShip in ghostShipSpawner.activeGhostShip)
+        {
+            Destroy(ghostShip);
+        }
+
+        ghostShipSpawner.activeGhostShip.Clear();
+        ghostShipSpawner.ghostShipPositions.Clear();
+        ghostShipSpawner.ghostShipTiles.Clear();
+
+        foreach (GameObject underwaterVolcano in underwaterVolcanoSpawner.activeUnderwaterVolcano)
+        {
+            Destroy(underwaterVolcano);
+        }
+
+        underwaterVolcanoSpawner.activeUnderwaterVolcano.Clear();
+        underwaterVolcanoSpawner.underwaterVolcanoPositions.Clear();
     }
 
     //Dice
@@ -2584,13 +3044,13 @@ public class Shipboard : MonoBehaviour
         // Award the skill points based on isPlayer1Turn
         if (isPlayer1Turn) // If it's player 2 turn
         {
-            player2_SP += skillPoints;
-            Debug.Log("Player 2 gains " + skillPoints + " skill points.");
+            GameManager.instance.player1SkillPoints += skillPoints;
+            Debug.Log("Player 1 gains " + skillPoints + " skill points.");
         }
         else // Player 1 gains skill
         {
-            player1_SP += skillPoints;
-            Debug.Log("Player 1 gains " + skillPoints + " skill points.");
+            GameManager.instance.player2SkillPoints += skillPoints;
+            Debug.Log("Player 2 gains " + skillPoints + " skill points.");
         }
     }
     // New method to handle calamities
@@ -2631,6 +3091,7 @@ public class Shipboard : MonoBehaviour
     public void HandleCalamitySpawn()
     {
         int spawnChance = mt.Next(100);
+        spawnedLava = false;
         ClearCalamities();
         if (spawnChance < 85)
         {
@@ -2682,6 +3143,11 @@ public class Shipboard : MonoBehaviour
     {
         return TILE_COUNT_Y;
     }
+    public Vector3 TileCenter(int x, int y)
+    {
+        return GetTileCenter(x, y);
+    }
+
     //Getter for Dead Player 1 Pieces
     public List<ShipPieces> GetDeadPlayer1()
     {
@@ -2709,4 +3175,84 @@ public class Shipboard : MonoBehaviour
     {
         return availableMoves;
     }
+    public ShipPieces GetShipAtPosition(int x, int y)
+    {
+        if (x < 0 || x >= TILE_COUNT_X || y < 0 || y >= TILE_COUNT_Y)
+            return null; // Out of bounds.
+
+        return shipboardPieces[x, y];
+    }
+
+    // Getter for the tiles array
+    public GameObject[,] Tiles
+    {
+        get { return tiles; }
+    }
+
+    // Getter for the current camera
+    public Camera CurrentCamera
+    {
+        get { return currentCamera; }
+    }
+
+    // Getter for the tile index lookup function
+    public Vector2Int GetTileIndex(GameObject hitInfo)
+    {
+        return LookupTileIndex(hitInfo);
+    }
+
+    public string GetAverageMoveTime(int team)
+    {
+        if (!playerTotalMoveTime.ContainsKey(team) || playerMoveCount[team] == 0)
+            return "N/A"; // No moves made
+
+        float avgTime = playerTotalMoveTime[team] / playerMoveCount[team];
+        return FormatMoveTime(avgTime);
+    }
+
+    private float defaultMaxGameTime = 1200f; // 20 min game cap for first time
+    private float maxMoveTime = 30f;  // Worst case avg move time
+
+    private float gameLengthWeight = 10f; // Adjust influence on score
+    private float moveTimeWeight = 20f;   // Adjust influence on score
+
+    public int CalculateTotalPoints(int team)
+    {
+        if (!playerTotalMoveTime.ContainsKey(team) || playerMoveCount[team] == 0)
+            return GameManager.instance.GetSkillPoints(team); // Only base points if no moves
+
+        // Get average move time
+        float avgMoveTime = playerTotalMoveTime[team] / playerMoveCount[team];
+
+        // Get total game duration
+        float totalGameDuration = Time.time - gameStartTime;
+
+        // Determine the max game time dynamically
+        float maxGameTime = Mathf.Max(GameManager.instance.GetLongestGameTime(), defaultMaxGameTime);
+
+        // Time efficiency bonus
+        float gameTimeBonus = Mathf.Clamp(maxGameTime - totalGameDuration, 0, maxGameTime) * gameLengthWeight;
+        float moveTimeBonus = Mathf.Clamp(maxMoveTime - avgMoveTime, 0, maxMoveTime) * moveTimeWeight;
+
+        // Calculate total score
+        int totalPoints = GameManager.instance.GetSkillPoints(team) + Mathf.RoundToInt(gameTimeBonus + moveTimeBonus);
+
+        Debug.Log($"Player {team + 1} Total Points: {totalPoints} (Base: {GameManager.instance.GetSkillPoints(team)}, Move Bonus: {moveTimeBonus}, Time Bonus: {gameTimeBonus})");
+
+        return totalPoints;
+    }
+
+    public float GetAveMoveTime(int team)
+    {
+        if (!playerTotalMoveTime.ContainsKey(team) || playerMoveCount[team] == 0)
+            return 0f;
+
+        return playerTotalMoveTime[team] / playerMoveCount[team];
+    }
+
+    public float GetTotalGameTime()
+    {
+        return Time.time - gameStartTime;
+    }
+
 }
